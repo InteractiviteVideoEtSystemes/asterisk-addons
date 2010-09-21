@@ -1,0 +1,591 @@
+2010-09-21  Leif Madsen <lmadsen@digium.com>
+
+	* Release Asterisk-Addons 1.4.12
+
+2010-05-04 17:37 +0000 [r1113]  Tilghman Lesher <tlesher@digium.com>
+
+	* cdr/cdr_addon_mysql.c: Log messages should be terminated with a
+	  newline. (closes issue #16404) Reported by: pnlarsson Patches:
+	  cdr.patch uploaded by pnlarsson (license 79)
+
+2010-04-14  Leif Madsen <lmadsen@digium.com>
+
+	* Release Asterisk-Addons 1.4.11
+
+2010-01-06 15:27 +0000 [r1083]  Sean Bright <sean@malleable.com>
+
+	* formats/format_mp3.c: Fix reading samples from format_mp3 after
+	  ast_seekstream/ast_tellstream. There is a bug when using
+	  ast_seekstream/ast_tellstream with format_mp3 in that the file
+	  read position is not reset before attempting to read samples. So
+	  when we seek to determine the maximum size of the file (as in
+	  res_agi's STREAM FILE) we weren't then resetting the file pointer
+	  so that we could properly read samples. This patch addresses that
+	  (in a similar manner to format_wav.c). (closes issue #15224)
+	  Reported by: rbd Patches: 20091230_addons_1.4_issue15224.diff
+	  uploaded by seanbright (license 71) Tested by: rbd, seanbright
+	  Review: https://reviewboard.asterisk.org/r/453
+
+2009-12-19 14:18 +0000 [r1078]  Tzafrir Cohen <tzafrir.cohen@xorcom.com>
+
+	* config.guess, config.sub: Use newer config.guess and config.sub
+	  from GNU.
+
+2009-12-01  Leif Madsen <lmadsen@digium.com>
+
+	* Release Asterisk-Addons 1.4.10
+
+2009-09-11  Leif Madsen <lmadsen@digium.com>
+
+	* Release Asterisk-Addons 1.4.10-rc1
+
+2009-09-08 18:03 +0000 [r1027]  Russell Bryant <russell@digium.com>
+
+	* formats/format_mp3.c: Fix audio problems with format_mp3. This
+	  problem was introduced when the AST_FRIENDLY_OFFSET patch was
+	  merged. I'm surprised that nobody noticed any trouble when
+	  testing that patch, but this fixes the code that fills in the
+	  buffer to start filling in after the offset portion of the
+	  buffer. (closes issue #15850) Reported by: 99gixxer Patches:
+	  issue15850.diff1.txt uploaded by russell (license 2) Tested by:
+	  99gixxer
+
+2009-09-01 20:38 +0000 [r1023]  Russell Bryant <russell@digium.com>
+
+	* formats/format_mp3.c: Fix memory corruption caused by format_mp3.
+	  format_mp3 claimed that it provided AST_FRIENDLY_OFFSET in frames
+	  returned by read(). However, it lied. This means that other parts
+	  of the code that attempted to make use of the offset buffer would
+	  end up corrupting the fields in the ast_filestream structure.
+	  This resulted in quite a few crashes due to unexpected values for
+	  fields in ast_filestream. This patch closes out quite a few bugs.
+	  However, some of these bugs have been open for a while and have
+	  been an area where more than one bug has been discussed. So with
+	  that said, anyone that is following one of the issues closed
+	  here, if you still have a problem, please open a new bug report
+	  for the specific problem you are still having. If you do, please
+	  ensure that the bug report is based on the newest version of
+	  Asterisk, and that this patch is applied if format_mp3 is in use.
+	  Thanks! (closes issue #15109) Reported by: jvandal Tested by:
+	  aragon, russell, zerohalo, marhbere, rgj (closes issue #14958)
+	  Reported by: aragon (closes issue #15123) Reported by:
+	  axisinternet (closes issue #15041) Reported by: maxnuv (closes
+	  issue #15396) Reported by: aragon (closes issue #15195) Reported
+	  by: amorsen Tested by: amorsen (closes issue #15781) Reported by:
+	  jensvb (closes issue #15735) Reported by: thom4fun (closes issue
+	  #15460) Reported by: marhbere
+
+2009-07-21  Leif Madsen <lmadsen@digium.com>
+
+	* Release Asterisk-Addons 1.4.9
+
+2009-07-13  Leif Madsen <lmadsen@digium.com>
+
+	* Release Asterisk-Addons 1.4.9-rc1
+
+2009-07-06 21:30 +0000 [r981]  Tilghman Lesher <tlesher@digium.com>
+
+	* res/res_config_mysql.c: Don't reset reconnect time, unless a
+	  reconnect really occurred. (closes issue #15375) Reported by:
+	  kowalma Patches: 20090628__issue15375.diff.txt uploaded by
+	  tilghman (license 14) Tested by: kowalma, jacco
+
+2009-06-29 22:21 +0000 [r959]  Tilghman Lesher <tlesher@digium.com>
+
+	* apps/app_addon_sql_mysql.c, configs/mysql.conf.sample (added):
+	  Autoclear resources in app MYSQL when the channel ends. (closes
+	  issue #14757) Reported by: alecdavis Patches:
+	  20090408__bug14757.diff.txt uploaded by tilghman (license 14)
+	  20090518__issue14757__trunk.diff.txt uploaded by tilghman
+	  (license 14) Tested by: alecdavis
+
+2009-05-27 21:51 +0000 [r932]  Tilghman Lesher <tlesher@digium.com>
+
+	* Makefile.rules: DONT_OPTIMIZE is a Makefile directive and needs
+	  to be interpreted before the compiler starts.
+
+2009-04-27 19:48 +0000 [r886]  Kevin P. Fleming <kpfleming@digium.com>
+
+	* aclocal.m4, configure, acinclude.m4: Incorporate autoconf 2.63
+	  related fixes to configure script (see revision 190721 of the
+	  asterisk repository for more details)
+
+2009-04-21  Leif Madsen <lmadsen@digium.com>
+
+	* Asterisk-Addons 1.4.8 released
+
+2008-12-22 16:59 +0000 [r714]  Russell Bryant <russell@digium.com>
+
+	* channels/ooh323c/src/ooCmdChannel.c: Fix a bogus
+	  pthread_mutex_init() (closes issue #14116) Reported by: junky
+	  Patches: mutex_init.diff uploaded by junky (license 177)
+
+2008-06-04 Mark Michelson <mmichelson@digium.com>
+
+	* Asterisk-Addons 1.4.7 released
+
+2008-06-04 16:58 +0000 [r621]  Mark Michelson <mmichelson@digium.com>
+
+	* channels/ooh323c/src/ooh323ep.h,
+	  channels/ooh323c/src/oochannels.c,
+	  channels/ooh323c/src/ooCmdChannel.c, channels/chan_ooh323.c,
+	  channels/ooh323c/src/ooCmdChannel.h,
+	  channels/ooh323c/src/ooh323ep.c:
+	  ------------------------------------------------------------------------
+	  r620 | mmichelson | 2008-06-04 11:55:58 -0500 (Wed, 04 Jun 2008)
+	  | 15 lines A few changes: 1. Add error-checking to the call to
+	  ooReadAndProcessStackCommands in oochannels.c 2. (1.2 only) There
+	  was a char * being used before being set. This was causing an
+	  almost immediate crash when ooh323 would load. This commit fixes
+	  that issue. 3. Most importantly, fix a security issue wherein
+	  arbitrary data could be sent to ooh323's command stack listening
+	  socket causing a remote crash. See AST-2008-009 for more details.
+	  (closes issue #12756) Reported by: tzafrir Patches:
+	  ooh323_pipev3.diff uploaded by putnopvut (license 60) Tested by:
+	  putnopvut
+	  ------------------------------------------------------------------------
+
+2008-05-28 22:29 +0000 [r601-606]  Tilghman Lesher <tlesher@digium.com>
+
+	* channels/chan_ooh323.c: Change channel name to use the section
+	  name, rather than CallerID name (which can contain strange
+	  characters). (closes issue #12743) Reported by: softins Patches:
+	  ooh323-1.4-diff.txt uploaded by softins (license 197)
+
+	* channels/chan_ooh323.c: Bring 1.4 up to date (related to issue
+	  #12715) Reported by: softins Patches: ooh323-1.4-diff.txt
+	  uploaded by softins (license 197)
+
+2008-05-23 22:55 +0000 [r599]  Tilghman Lesher <tlesher@digium.com>
+
+	* /, channels/chan_ooh323.c: Merging changes to ooh323 driver, as
+	  requested by softins (Related to issue #12715)
+
+2008-04-30 04:46 +0000 [r578]  Tilghman Lesher <tlesher@digium.com>
+
+	* Makefile.rules: Don't exclude system header files when doing
+	  dependency checks. The reason for this is fairly obvious -- the
+	  Asterisk header files (but only in -addons) are part of the
+	  system header files at that point, so a changed buildopts.h is
+	  considered a change in the system headers. We WANT that change to
+	  be considered a reason to rebuild everything in -addons, since
+	  the buildsum will no longer match at runtime. Note that if you're
+	  building -addons, you'll still need to do a 'make clean' to get
+	  the old dependency files to go away this first time, but after
+	  that, the dependency checks will take care of it for you. (Closes
+	  issue #11291)
+
+2008-03-31 21:09 +0000 [r574]  Jason Parker <jparker@digium.com>
+
+	* /: Switch to proper externals locations..
+
+2008-03-07 15:04 +0000 [r544]  Tilghman Lesher <tlesher@digium.com>
+
+	* apps/app_addon_sql_mysql.c: Fix documentation (Closes issue
+	  #12166)
+
+2008-03-03 17:01 +0000 [r539]  Jason Parker <jparker@digium.com>
+
+	* Makefile.moddir_rules: Make sure to create the modules directory.
+	  In some cases, it's possible that this won't already exist.
+	  Closes issue #12111.
+
+2008-02-20 Russell Bryant  <russell@digium.com>
+
+	* Asterisk-Addons 1.4.6 released.
+
+2008-02-13 22:58 +0000 [r530]  Jason Parker <jparker@digium.com>
+
+	* formats/mp3/MPGLIB_TODO,
+	  channels/ooh323c/src/h323/H235-SECURITY-MESSAGESDec.c,
+	  aclocal.m4, channels/ooh323cDriver.h,
+	  channels/ooh323c/src/rtctype.c,
+	  channels/ooh323c/src/printHandler.c, apps/app_addon_sql_mysql.c,
+	  channels/ooh323c/src/ooCalls.c, configure,
+	  channels/ooh323c/src/ooUtils.c, channels/ooh323c/src/rtctype.h,
+	  channels/ooh323c/src/printHandler.h,
+	  channels/ooh323c/src/ooCalls.h, channels/ooh323c/src/ooUtils.h,
+	  formats/mp3/decode_i386.c, channels (added),
+	  channels/ooh323c/src/eventHandler.c, apps (added), configure.ac,
+	  channels/ooh323c/src/context.c,
+	  channels/ooh323c/src/eventHandler.h, formats/mp3/README,
+	  channels/Makefile, formats/mp3/mpg123.h, app_addon_sql_mysql.c
+	  (removed), formats/mp3/mpglib.h, channels/ooh323c/src/ooper.h,
+	  channels/ooh323c/src/ooDateTime.c, Makefile,
+	  channels/ooh323c/src/ootrace.c, apps/Makefile,
+	  channels/ooh323c/src/h323, channels/ooh323c/src/ooGkClient.c,
+	  channels/chan_ooh323.c, channels/ooh323c/src/ooDateTime.h,
+	  formats/mp3/common.c, channels/ooh323c/COPYING,
+	  channels/ooh323c/src/ootrace.h, channels/ooh323c/src/Makefile.in,
+	  channels/ooh323c/src/h323/H323-MESSAGES.c,
+	  channels/ooh323c/src/ooGkClient.h, channels/chan_ooh323.h,
+	  formats/mp3/dct64_i386.c, res (added), formats/mp3/layer3.c,
+	  formats/mp3/interface.c, cdr/cdr_addon_mysql.c,
+	  channels/ooh323c/src/h323/H323-MESSAGES.h,
+	  channels/ooh323c/src/ooLogChan.c,
+	  channels/ooh323c/src/ooStackCmds.c,
+	  channels/ooh323c/src/ooh323.c, channels/ooh323c/src/errmgmt.c,
+	  menuselect-tree (removed), build_tools/get_makeopts (added),
+	  channels/ooh323c/src/ooLogChan.h, channels/ooh323c/src/dlist.c,
+	  channels/ooh323c/src/h323/H235-SECURITY-MESSAGES.h,
+	  channels/ooh323c/src/ooStackCmds.h, formats/format_mp3.c,
+	  channels/ooh323c/src/oohdr.h, Makefile.moddir_rules (added),
+	  channels/ooh323c/src/ooh323.h, Makefile.rules,
+	  channels/ooh323c/src/decode.c, channels/ooh323c/src/dlist.h,
+	  format_mp3 (removed), cdr (added),
+	  channels/ooh323c/src/ooSocket.c, channels/ooh323c, formats
+	  (added), formats/mp3/decode_ntom.c,
+	  channels/ooh323c/src/h323/H323-MESSAGESEnc.c,
+	  channels/ooh323c/src/oochannels.c,
+	  channels/ooh323c/src/ooCmdChannel.c,
+	  channels/ooh323c/src/ooSocket.h, channels/ooh323c/src/ooCommon.h,
+	  channels/ooh323c/src/ooq931.c, channels/ooh323c/src/oochannels.h,
+	  channels/ooh323c/src/ooCmdChannel.h,
+	  channels/ooh323c/src/h323/MULTIMEDIA-SYSTEM-CONTROLEnc.c,
+	  app_saycountpl.c (removed), channels/ooh323c/src/ooq931.h,
+	  res_config_mysql.c (removed), apps/app_saycountpl.c,
+	  formats/mp3/tabinit.c, formats/mp3/Makefile,
+	  channels/ooh323c/src/ooasn1.h, channels/ooh323c/src/ooports.c,
+	  formats/Makefile, channels/ooh323c/src/ooports.h,
+	  channels/ooh323c/src/memheap.c,
+	  channels/ooh323c/src/ooCapability.c,
+	  channels/ooh323c/src/h323/H323-MESSAGESDec.c,
+	  channels/ooh323c/src, asterisk-ooh323c (removed),
+	  channels/ooh323c/src/memheap.h,
+	  channels/ooh323c/src/ooCapability.h,
+	  channels/ooh323c/src/perutil.c,
+	  channels/ooh323c/src/h323/MULTIMEDIA-SYSTEM-CONTROLDec.c,
+	  channels/ooh323c/README, configs/ooh323.conf.sample (added),
+	  formats/mp3, res/res_config_mysql.c, build_tools/get_moduleinfo
+	  (added), channels/ooh323c/src/encode.c,
+	  channels/ooh323c/src/h323/H235-SECURITY-MESSAGESEnc.c,
+	  cdr_addon_mysql.c (removed), formats/mp3/huffman.h, cdr/Makefile,
+	  channels/ooh323c/src/ooh323ep.c, makeopts.in, doc/chan_ooh323.txt
+	  (added), channels/ooh323c/src/ooh323ep.h,
+	  channels/ooh323c/src/ootypes.h,
+	  channels/ooh323c/src/h323/MULTIMEDIA-SYSTEM-CONTROL.c, /,
+	  channels/ooh323c/src/ooTimer.c,
+	  channels/ooh323c/src/h323/MULTIMEDIA-SYSTEM-CONTROL.h,
+	  doc/ChangeLog.chan_ooh323 (added), formats/mp3/MPGLIB_README,
+	  channels/ooh323c/src/ooh245.c, channels/ooh323c/src/ooTimer.h,
+	  res/Makefile, channels/ooh323c/src/ooh245.h,
+	  channels/ooh323cDriver.c: moddirify! Merged from
+	  team/qwell/moddir_1.4/
+
+2008-01-16 18:05 +0000 [r502]  Russell Bryant <russell@digium.com>
+
+	* asterisk-ooh323c/README, menuselect-tree,
+	  asterisk-ooh323c/src/chan_h323.c,
+	  asterisk-ooh323c/h323.conf.sample: Add some notes to make it
+	  clear that this module is currently unsupported
+
+2007-11-29 Russell Bryant  <russell@digium.com>
+
+	* Asterisk-Addons 1.4.5 released.
+
+2007-11-29 23:47 +0000 [r490]  Tilghman Lesher <tlesher@digium.com>
+
+	* format_mp3/format_mp3.c: Track API change (Closes issue #11401)
+
+2007-11-14 23:03 +0000 [r484-485]  Jason Parker <jparker@digium.com>
+
+	* Makefile: .EXPORT_ALL_VARIABLES + menuselect == bad. We really
+	  don't want to pass things like NCURSES_INCLUDE down to
+	  menuselect... Issue 11205.
+
+	* Makefile: Make addons Makefile a bit more sane (and similar to
+	  asterisk)
+
+2007-11-01 15:13 +0000 [r479]  Russell Bryant <russell@digium.com>
+
+	* Makefile, format_mp3/Makefile: Remove the dependency files on
+	  "make clean". (issue #11137) Reported by: IgorG Patches:
+	  addonclean-478-1.patch uploaded by IgorG (license 20)
+
+2007-10-26 14:40 +0000 [r475]  Tilghman Lesher <tlesher@digium.com>
+
+	* cdr_addon_mysql.c: Auto reconnect database on connection failure
+	  (fixes missing CDRs) Reported by ys. Fixed by ys. Closes issue
+	  #11092
+
+2007-10-19 14:41 +0000 [r472]  Kevin P. Fleming <kpfleming@digium.com>
+
+	* Makefile, build_tools/mkdep (removed), Makefile.rules (added):
+	  use more of the standard Asterisk build system here...
+
+2007-10-16 23:09 +0000 [r466]  Tilghman Lesher <tlesher@digium.com>
+
+	* /, cdr_addon_mysql.c: Merged revisions 465 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r465 | tilghman | 2007-10-16 16:48:04 -0500 (Tue, 16 Oct
+	  2007) | 2 lines Escape all text-based fields for the insert
+	  (fixes AST-2007-023) ........
+
+2007-10-16  Russell Bryant  <russell@digium.com>
+
+	* Asterisk-Addons 1.4.4 released.
+
+2007-10-16 23:09 +0000 [r466]  Tilghman Lesher <tlesher@digium.com>
+
+	* /, cdr_addon_mysql.c: Merged revisions 465 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r465 | tilghman | 2007-10-16 16:48:04 -0500 (Tue, 16 Oct
+	  2007) | 2 lines Escape all text-based fields for the insert
+	  (fixes AST-2007-023) ........
+
+2007-10-04 13:27 +0000 [r462]  Joshua Colp <jcolp@digium.com>
+
+	* .cvsignore (removed): Delete old .cvsignore file. (closes issue
+	  #10883) Reported by: casper
+
+2007-10-02  Russell Bryant  <russell@digium.com>
+
+	* Asterisk-Addons 1.4.3 released.
+
+2007-09-06 15:31 +0000 [r439]  Joshua Colp <jcolp@digium.com>
+
+	* cdr_addon_mysql.c: (closes issue #10657) Reported by: casper
+	  Patches: cdr_addon_mysql.c.438.diff uploaded by casper (license
+	  55) Don't log debug messages if debug is not enabled.
+
+2007-08-23 17:21 +0000 [r428]  Russell Bryant <russell@digium.com>
+
+	* res_config_mysql.c: Fix a format string error that caused a
+	  crash. This debug message tried to print something as string that
+	  was just an int. (closes issue #10520, reported by johann8384,
+	  patch by me)
+
+2007-08-13 15:56 +0000 [r423]  Jason Parker <jparker@digium.com>
+
+	* res_config_mysql.c: If we (re)connect, make sure we set the
+	  connect_time Issue 10438
+
+2007-07-21 07:17 +0000 [r417]  Russell Bryant <russell@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: fix a typo
+
+2007-07-19 15:12 +0000 [r414]  Russell Bryant <russell@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: fix HOLD and UNHOLD control
+	  frame processing to the ooh323 channel driver. The minimum thing
+	  that every channel driver should do with these is start or stop
+	  music on hold on the channel. Optionally, depending on the
+	  channel, it may make sense to add configuration options to pass
+	  this information down so that the remote end can handle the HOLD
+	  signalling in the way that they choose. For example, chan_iax2
+	  will pass this signalling across the network, and chan_zap will
+	  pass this signalling on a PRI. (This fixes a problem I saw on the
+	  asterisk-users mailing list)
+
+2007-07-13 20:32 +0000 [r410]  Russell Bryant <russell@digium.com>
+
+	* Makefile: We have menuconfig as an alias for menuselect in
+	  Asterisk, so add it here as well. (requested by IgorG on IRC)
+
+2007-06-21 15:09 +0000 [r405]  Joshua Colp <jcolp@digium.com>
+
+	* /, cdr_addon_mysql.c: Merged revisions 404 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r404 | file | 2007-06-21 11:08:22 -0400 (Thu, 21 Jun
+	  2007) | 2 lines Use mysql_errno to get the error instead of
+	  mysql_ping's return value. (issue #9434 reported by lupino3)
+	  ........
+
+2007-06-18  Russell Bryant  <russell@digium.com>
+
+	* Asterisk-Addons 1.4.2 released.
+	
+2007-06-18 22:40 +0000 [r398]  Russell Bryant <russell@digium.com>
+
+	* cdr_addon_mysql.c: Fix cdr_addon_mysql to work with Asterisk
+	  1.4.5 due to an API change ...
+
+2007-06-07 12:25 +0000 [r389]  Joshua Colp <jcolp@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: Don't try to use the name of
+	  the configuration option as the logfile... instead use the
+	  configuration value. (issue #9908 reported by T-80)
+
+2007-06-05 22:05 +0000 [r387]  Russell Bryant <russell@digium.com>
+
+	* Makefile: Fix cross compiling for format_mp3 (issue #9875, patch
+	  from zandbelt)
+
+2007-06-04 18:50 +0000 [r385]  Joshua Colp <jcolp@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: Don't try to access a variable
+	  that may be NULL, mmmk? (issue #9829 reported by xrg)
+
+2007-05-14 16:22 +0000 [r382]  Jason Parker <jparker@digium.com>
+
+	* asterisk-ooh323c/configure.in, asterisk-ooh323c/Makefile.am,
+	  Makefile, aclocal.m4, build_tools/menuselect-deps.in, configure,
+	  menuselect-tree, configure.ac, asterisk-ooh323c/configure,
+	  format_mp3/Makefile, asterisk-ooh323c/Makefile.in, makeopts.in:
+	  Add support for --with-asterisk to the configure script. This is
+	  needed when you use --prefix in the asterisk installation. Issue
+	  8492, patch by me.
+
+2007-05-10 17:47 +0000 [r380]  Jason Parker <jparker@digium.com>
+
+	* Makefile: Clean up Makefile a little. Wildcard .o files - no need
+	  to have different lines for each one. They were all the same.
+	  Filter out modules that are in subdirectories, when doing mkdeps
+	  - avoids a silly warning.
+
+2007-04-25  Russell Bryant  <russell@digium.com>
+
+	* Asterisk-Addons 1.4.1 released.
+	
+2007-04-10 04:37 +0000 [r360]  Steve Murphy <murf@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: New args added to the 1.4
+	  version of the ooh323 stuff.
+
+2007-04-09 20:44 +0000 [r358]  Tilghman Lesher <tilghman@mail.jeffandtilghman.com>
+
+	* asterisk-ooh323c/config.h, /, asterisk-ooh323c/configure,
+	  res_config_mysql.c: Merged revisions 357 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r357 | tilghman | 2007-04-09 15:39:45 -0500 (Mon, 09 Apr
+	  2007) | 2 lines Fix memory leaks, and some unnecessary closes
+	  ........
+
+2007-03-23 19:46 +0000 [r352]  Objective Systems <support@obj-sys.com>
+
+	* asterisk-ooh323c/ooh323c/src/ooGkClient.c,
+	  asterisk-ooh323c/ChangeLog,
+	  asterisk-ooh323c/ooh323c/src/ooCapability.c, /,
+	  asterisk-ooh323c/ooh323c/src/ooLogChan.c: Merged revisions
+	  346,350-351 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r346 | objsys | 2007-03-05 17:41:12 -0500 (Mon, 05 Mar
+	  2007) | 1 line keepalive Regstration Message for ep value
+	  ........ r350 | objsys | 2007-03-16 15:05:56 -0500 (Fri, 16 Mar
+	  2007) | 1 line possible fix for g.729 codec comparision ........
+	  r351 | objsys | 2007-03-23 14:39:20 -0500 (Fri, 23 Mar 2007) | 1
+	  line g.729A codec comparision fixed ........
+
+2007-03-13 18:26 +0000 [r348]  Russell Bryant <russell@digium.com>
+
+	* res_sqlite3 (removed): Remove some code that has fallen very out
+	  of date. We have a bunch of up to date sqlite modules in the bug
+	  tracker that I will be merging soon.
+
+2007-03-05 19:17 +0000 [r345]  Objective Systems <support@obj-sys.com>
+
+	* /, asterisk-ooh323c/ooh323c/src/ooq931.c: Merged revisions
+	  339,344 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r339 | objsys | 2007-02-09 10:38:49 -0500 (Fri, 09 Feb
+	  2007) | 1 line Added change download FAQ ........ r344 | objsys |
+	  2007-03-05 13:11:36 -0500 (Mon, 05 Mar 2007) | 1 line update for
+	  Information message log ........
+
+2007-02-15 22:25 +0000 [r342]  Jason Parker <jparker@digium.com>
+
+	* /, cdr_addon_mysql.c: Merged revisions 341 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r341 | qwell | 2007-02-15 16:23:07 -0600 (Thu, 15 Feb
+	  2007) | 2 lines Fix a typo pointed out by kshummard ........
+
+2007-02-09 15:57 +0000 [r340]  Objective Systems <support@obj-sys.com>
+
+	* asterisk-ooh323c/FAQ.html: Merged revisions 339 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r339 | objsys | 2007-02-09 10:38:49 -0500 (Fri, 09 Feb
+	  2007) | 1 line Added change download FAQ ........
+
+2007-01-30 17:01 +0000 [r337-338]  Objective Systems <support@obj-sys.com>
+
+	* asterisk-ooh323c/FAQ.html, asterisk-ooh323c/README: 1.2 changed
+	  to 1.4
+
+	* asterisk-ooh323c/configure.in, asterisk-ooh323c/ChangeLog,
+	  asterisk-ooh323c/FAQ.html (added), /, asterisk-ooh323c/README,
+	  asterisk-ooh323c/ooh323c/src/ootypes.h,
+	  asterisk-ooh323c/src/chan_h323.c, asterisk-ooh323c/configure,
+	  asterisk-ooh323c/ooh323c/src/ooq931.c,
+	  asterisk-ooh323c/src/chan_h323.h: Merged revisions 332-336 via
+	  svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r332 | objsys | 2007-01-25 12:36:03 -0500 (Thu, 25 Jan
+	  2007) | 1 line find user to use IP for searching user ........
+	  r333 | objsys | 2007-01-29 11:37:01 -0500 (Mon, 29 Jan 2007) | 1
+	  line disabled the Q.931 header screening for CallingPartyNumber
+	  ........ r334 | objsys | 2007-01-29 11:37:34 -0500 (Mon, 29 Jan
+	  2007) | 1 line obj-sys 0.6 release change log ........ r335 |
+	  objsys | 2007-01-29 13:16:44 -0500 (Mon, 29 Jan 2007) | 1 line
+	  obj-sys 0.6 release changes ........ r336 | objsys | 2007-01-29
+	  15:10:02 -0500 (Mon, 29 Jan 2007) | 1 line added FAQ for channel
+	  drivr ........
+
+2007-01-19 22:27 +0000 [r331]  Objective Systems <support@obj-sys.com>
+
+	* asterisk-ooh323c/ChangeLog,
+	  asterisk-ooh323c/ooh323c/src/ooCapability.c, /,
+	  asterisk-ooh323c/README, asterisk-ooh323c/src/chan_h323.c,
+	  asterisk-ooh323c/ooh323c/src/ooLogChan.c,
+	  asterisk-ooh323c/h323.conf.sample,
+	  asterisk-ooh323c/ooh323c/src/ooq931.c,
+	  asterisk-ooh323c/src/ooh323cDriver.c,
+	  asterisk-ooh323c/ooh323c/src/ooh323.c: Merged revisions
+	  305-307,324-328 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r305 | objsys | 2006-09-21 17:10:25 -0400 (Thu, 21 Sep
+	  2006) | 1 line log update ........ r306 | objsys | 2006-09-21
+	  17:11:32 -0400 (Thu, 21 Sep 2006) | 1 line log update ........
+	  r307 | objsys | 2006-09-21 17:17:58 -0400 (Thu, 21 Sep 2006) | 1
+	  line added additional trace message to find channel compare
+	  problem ........ r324 | objsys | 2007-01-18 16:52:04 -0500 (Thu,
+	  18 Jan 2007) | 1 line fix for log file msg problem ........ r325
+	  | objsys | 2007-01-18 18:06:36 -0500 (Thu, 18 Jan 2007) | 1 line
+	  Tunneling has priority than control channel ........ r326 |
+	  objsys | 2007-01-18 18:14:28 -0500 (Thu, 18 Jan 2007) | 1 line
+	  update for config file ........ r327 | objsys | 2007-01-19
+	  10:14:40 -0500 (Fri, 19 Jan 2007) | 1 line h263 video codec cap
+	  ........ r328 | objsys | 2007-01-19 10:32:52 -0500 (Fri, 19 Jan
+	  2007) | 1 line other updates ........
+
+2007-01-19 19:27 +0000 [r329]  Russell Bryant <russell@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: Update digit_end callback to
+	  reflect the new prototype that includes the duration.
+
+2006-12-23  Kevin P. Fleming  <kpfleming@digium.com>
+
+	* Asterisk-Addons 1.4.0 released.
+	
+2006-12-14 22:19 +0000 [r319]  Joshua Colp <jcolp@digium.com>
+
+	* asterisk-ooh323c/src/chan_h323.c: Update ast_channel_alloc call
+	  to new API format. (issue #8582 reported by DEA with minor mods
+	  by moi)
+
+2006-11-28 16:40 +0000 [r317]  Joshua Colp <jcolp@digium.com>
+
+	* app_addon_sql_mysql.c, /: Merged revisions 316 via svnmerge from
+	  https://origsvn.digium.com/svn/asterisk-addons/branches/1.2
+	  ........ r316 | file | 2006-11-28 11:39:25 -0500 (Tue, 28 Nov
+	  2006) | 2 lines Print out an error message with the reason if the
+	  MySQL query fails. (issue #7837 reported by lupino3) ........
+
+2006-10-17  Kevin P. Fleming  <kpfleming@digium.com>
+
+	* Asterisk-Addons 1.4.0-beta2 released.
+	
+2006-09-25 14:37 +0000 [r310]  Tilghman Lesher <tilghman@mail.jeffandtilghman.com>
+
+	* Makefile: Combination of tabs and spaces makes the Makefile
+	  difficult to follow
+
+2006-09-22 23:30 +0000 [r308]  Kevin P. Fleming <kpfleming@digium.com>
+
+	* Makefile: remove silly sort don't try to compute dependencies for
+	  modules we aren't going to build anyway
+
+2006-09-20  Kevin P. Fleming  <kpfleming@digium.com>
+
+	* Asterisk-Addons 1.4.0-beta1 released.
+
+
