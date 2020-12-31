@@ -42,8 +42,9 @@
 	<depend>mysqlclient</depend>
  ***/
 
-#include <asterisk.h>
 
+#include <asterisk.h>
+#include <errno.h>
 #include <asterisk/channel.h>
 #include <asterisk/logger.h>
 #include <asterisk/config.h>
@@ -84,12 +85,12 @@ static struct ast_cli_entry cli_realtime_mysql_status = {
         { "realtime", "mysql", "status", NULL }, realtime_mysql_status,
         "Shows connection information for the MySQL RealTime driver", cli_realtime_mysql_status_usage, NULL };
 
-static struct ast_variable *realtime_mysql(const char *database, const char *table, va_list ap)
+static struct ast_variable *realtime_mysql(const char *database, const char *table, va_list ap, int * retcode)
 {
 	MYSQL_RES *result;
 	MYSQL_ROW row;
 	MYSQL_FIELD *fields;
-	int numFields, i, valsz;
+	int numFields, i, valsz, ret;
 	char sql[512];
 	char buf[511]; /* Keep this size uneven as it is 2n+1. */
 	char *stringp;
@@ -97,6 +98,7 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 	char *op;
 	const char *newparam, *newval;
 	struct ast_variable *var=NULL, *prev=NULL;
+	int err;
 
 	if(!table) {
 		ast_log(LOG_WARNING, "MySQL RealTime: No table specified.\n");
@@ -108,13 +110,31 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 	newval = va_arg(ap, const char *);
 	if(!newparam || !newval)  {
 		ast_log(LOG_WARNING, "MySQL RealTime: Realtime retrieval requires at least 1 parameter and 1 value to search on.\n");
+		if (retcode) *retcode = -3;
 		return NULL;
 	}
 
 	/* Must connect to the server before anything else, as the escape function requires the mysql handle. */
-	ast_mutex_lock(&mysql_lock);
+	//ast_mutex_lock(&mysql_lock);
+	for (i=0; i<800; i++)
+	{
+	    ret = ast_mutex_trylock(&mysql_lock);
+	    if (!ret) break;
+	    err = errno;
+	    usleep(1000);
+	} 
+
+	if (ret)
+	{
+		ast_log(LOG_ERROR, "Failed to lock mysql connection errno=%d. Deadlock ?\n", err);
+		if (retcode) *retcode = -2;
+		
+		return NULL;
+	}
+
 	if (!mysql_reconnect(database)) {
 		ast_mutex_unlock(&mysql_lock);
+		if (retcode) *retcode = -1;
 		return NULL;
 	}
 
@@ -145,6 +165,7 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 		ast_log(LOG_DEBUG, "MySQL RealTime: Query: %s\n", sql);
 		ast_log(LOG_DEBUG, "MySQL RealTime: Query Failed because: %s\n", mysql_error(&mysql));
 		ast_mutex_unlock(&mysql_lock);
+		if (retcode) *retcode = -4;
 		return NULL;
 	}
 
@@ -176,7 +197,7 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 
 	ast_mutex_unlock(&mysql_lock);
 	mysql_free_result(result);
-
+	if (retcode) *retcode = 0;
 	return var;
 }
 
@@ -471,7 +492,8 @@ static int load_module(void)
 	parse_config();
 
 	ast_mutex_lock(&mysql_lock);
-
+	connected = 0;
+	memset(&mysql, 0, sizeof(mysql));
 	if(!mysql_reconnect(NULL)) {
 		ast_log(LOG_WARNING, "MySQL RealTime: Couldn't establish connection. Check debug.\n");
 		ast_log(LOG_DEBUG, "MySQL RealTime: Cannot Connect: %s\n", mysql_error(&mysql));
@@ -503,6 +525,7 @@ static int unload_module(void)
 	ast_module_user_hangup_all();
 
 	/* Unlock so something else can destroy the lock. */
+	memset(&mysql, 0, sizeof(mysql));
 	ast_mutex_unlock(&mysql_lock);
 
 	return 0;
@@ -515,6 +538,7 @@ static int reload(void)
 
 	mysql_close(&mysql);
 	connected = 0;
+	memset(&mysql, 0, sizeof(mysql));
 	parse_config();
 
 	if(!mysql_reconnect(NULL)) {
@@ -600,6 +624,7 @@ static int mysql_reconnect(const char *database)
 #ifdef MYSQL_OPT_RECONNECT
 	my_bool trueval = 1;
 #endif
+	unsigned int timeout = 15;
 
 	if(!database || ast_strlen_zero(database))
 		ast_copy_string(my_database, dbname, sizeof(my_database));
@@ -615,15 +640,28 @@ reconnect_tryagain:
 			connected = 0;
 			return 0;
 		}
-		if(mysql_real_connect(&mysql, dbhost, dbuser, dbpass, my_database, dbport, dbsock, 0)) {
+		mysql_options(&mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+
+		if(mysql_real_connect(&mysql, dbhost, dbuser, dbpass, my_database, dbport, dbsock, 0))
+		{
+
+			const char * setutf8 = "SET CHARACTER SET 'utf8'";
 #ifdef MYSQL_OPT_RECONNECT
 			/* The default is no longer to automatically reconnect on failure,
 			 * (as of 5.0.3) so we have to set that option here. */
 			mysql_options(&mysql, MYSQL_OPT_RECONNECT, &trueval);
 #endif
+			mysql_options(&mysql, MYSQL_OPT_READ_TIMEOUT, &timeout);
+			mysql_options(&mysql, MYSQL_OPT_WRITE_TIMEOUT, &timeout);
+			
 			ast_log(LOG_DEBUG, "MySQL RealTime: Successfully connected to database.\n");
 			connected = 1;
 			connect_time = time(NULL);
+			if ( mysql_real_query(&mysql, setutf8, strlen(setutf8) ))
+			{
+				ast_log(LOG_ERROR, "MySQL RealTime: Failed to change to UTF-8: %s\n", mysql_errno(&mysql));
+				
+			}
 			return 1;
 		} else {
 			ast_log(LOG_ERROR, "MySQL RealTime: Failed to connect database server %s on %s (err %d). Check debug for more info.\n", dbname, dbhost, mysql_errno(&mysql));
@@ -640,6 +678,7 @@ reconnect_tryagain:
 			connect_time = 0;
 			ast_log(LOG_ERROR, "MySQL RealTime: Ping failed (%d).  Trying an explicit reconnect.\n", mysql_errno(&mysql));
 			ast_log(LOG_DEBUG, "MySQL RealTime: Server Error (%d): %s\n", mysql_errno(&mysql), mysql_error(&mysql));
+			mysql_close(&mysql);
 			goto reconnect_tryagain;
 		}
 
