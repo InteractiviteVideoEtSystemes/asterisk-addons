@@ -1,0 +1,8 @@
+*.o
+*.so
+*.d
+*.o_a
+*.moduleinfo
+*.makeopts
+*.a
+*.oo
