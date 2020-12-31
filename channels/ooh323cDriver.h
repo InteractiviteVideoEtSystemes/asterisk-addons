@@ -28,12 +28,18 @@
 #define H323_DTMF_H245SIGNAL       (1 << 3)
 #define H323_DTMF_INBAND           (1 << 4)
 
-struct h323_pvt;
 int ooh323c_start_stack_thread(void);
 int ooh323c_stop_stack_thread(void);
 int ooh323c_set_capability
    (struct ast_codec_pref *prefs, int capability, int dtmf);
 int convertH323CapToAsteriskCap(int cap);
+#ifdef VIDEOCAPS
+int ooh323c_set_capability_for_call
+   (ooCallData *call, struct ast_codec_pref *prefs, int capability, int dtmf,
+    struct ast_capabilities * caps);
+#else
 int ooh323c_set_capability_for_call
    (ooCallData *call, struct ast_codec_pref *prefs, int capability, int dtmf);
+#endif
+
 #endif

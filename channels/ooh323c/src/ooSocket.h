@@ -39,6 +39,9 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <net/if.h>
+#include <fcntl.h>
+#include <string.h>
+#include <errno.h>
 #endif
 
 #include "ooasn1.h"
@@ -112,7 +115,7 @@ typedef struct OOInterface{
  *                     negative return value is error.
  */
 EXTERN int ooSocketAccept (OOSOCKET socket, OOSOCKET *pNewSocket, 
-                             OOIPADDR* destAddr, int* destPort);
+                             struct in_addr* destAddr, int* destPort);
 
 /**
  * This function converts an IP address to its string representation.
@@ -163,10 +166,15 @@ EXTERN int ooSocketClose (OOSOCKET socket);
  *                     following format: "NNN.NNN.NNN.NNN", where NNN is a
  *                     number in the range (0..255).
  * @param port         The destination port to connect.
+ * @param non_blocking To use a connect on non bloking ( else lock thread ) .
  * @return             Completion status of operation: 0 (ASN_OK) = success,
  *                     negative return value is error.
  */
-EXTERN int ooSocketConnect (OOSOCKET socket, const char* host, int port);
+EXTERN int ooSocketConnect (OOSOCKET socket, const char* host, int port,int non_blocking);
+
+
+/* Call this fct to check non blocking mode connection */
+  EXTERN int ooSocketConnectCheckBlock (OOSOCKET socket ,const char* host, int port );
 
 /**
  * This function creates a socket. The only streaming TCP/IP sockets are

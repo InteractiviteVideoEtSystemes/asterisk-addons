@@ -26,9 +26,18 @@
 #include "ooGkClient.h"
 #include "ooTimer.h"
 
+
+#define PRINT_CALL_SIZE     64
+#define END_PRINT_CALL_SIZE PRINT_CALL_SIZE*2
+
 /** Global endpoint structure */
 extern OOH323EndPoint gH323ep;
 
+/* IVes Charging Vector */
+void ooH323SetChargVectorID( OOH323CallData *call);
+void ooH323GetChargVectorID( OOH323CallData *call);
+/*  IVeS : Terminal information */
+void ooH323SetTerminalInfo( OOH323CallData *call , H225Setup_UUIE *setup);
 
 int ooOnReceivedReleaseComplete(OOH323CallData *call, Q931Message *q931Msg)
 {
@@ -123,6 +132,7 @@ int ooOnReceivedReleaseComplete(OOH323CallData *call, Q931Message *q931Msg)
          }
       }
    }
+   OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedReleaseComplete upd callState[CLEARED]\n");
    call->callState = OO_CALL_CLEARED;
 
    return ret;
@@ -139,7 +149,7 @@ int ooOnReceivedSetup(OOH323CallData *call, Q931Message *q931Msg)
    OOAliases *pAlias=NULL;
 
    call->callReference = q931Msg->callReference;
- 
+
    if(!q931Msg->userInfo)
    {
       OOTRACEERR3("ERROR:No User-User IE in received SETUP message (%s, %s)\n",
@@ -153,6 +163,7 @@ int ooOnReceivedSetup(OOH323CallData *call, Q931Message *q931Msg)
                   "%s\n", call->callType, call->callToken);
       return OO_FAILED;
    }
+
    memcpy(call->callIdentifier.guid.data, setup->callIdentifier.guid.data, 
           setup->callIdentifier.guid.numocts);
    call->callIdentifier.guid.numocts = setup->callIdentifier.guid.numocts;
@@ -160,6 +171,12 @@ int ooOnReceivedSetup(OOH323CallData *call, Q931Message *q931Msg)
    memcpy(call->confIdentifier.data, setup->conferenceID.data,
           setup->conferenceID.numocts);
    call->confIdentifier.numocts = setup->conferenceID.numocts;
+
+   /* trace call & conf id */
+   ooH323PrintCallId(call);
+   ooH323SetChargVectorID(call);
+   /* Terminale info */
+   ooH323SetTerminalInfo( call , setup ) ;
 
    /* check for display ie */
    pDisplayIE = ooQ931GetIE(q931Msg, Q931DisplayIE);
@@ -285,6 +302,11 @@ int ooOnReceivedSetup(OOH323CallData *call, Q931Message *q931Msg)
       sprintf(call->remoteIP, "%d.%d.%d.%d", ip->data[0], ip->data[1], 
                                              ip->data[2], ip->data[3]);
       call->remotePort =  setup->sourceCallSignalAddress.u.ipAddress->port;
+      OOTRACEAST(OOTRCLVLDBGA,"[H323] Source call signalling address : %s  (%s, %s)\n",
+                 call->remoteIP, call->callType,
+                 call->callToken);
+      snprintf(call->PrivateIP, OO_PCV_CID_SIZE ,  "%d.%d.%d.%d", ip->data[0], ip->data[1], 
+               ip->data[2], ip->data[3]);
    }
    
    /* check for fast start */
@@ -1036,7 +1058,7 @@ int ooOnReceivedSignalConnect(OOH323CallData* call, Q931Message *q931Msg)
       }
       if(call->masterSlaveState == OO_MasterSlave_Idle)
       {
-         ret = ooSendMasterSlaveDetermination(call);
+        ret = ooSendMasterSlaveDetermination(call,FALSE);
          if(ret != OO_OK)
          {
             OOTRACEERR3("ERROR:Sending Master-slave determination message "
@@ -1141,15 +1163,18 @@ int ooHandleH2250Message(OOH323CallData *call, Q931Message *q931Msg)
          }
          ret = ooOnReceivedSignalConnect(call, q931Msg);
          if(ret != OO_OK)
+         {
             OOTRACEERR3("Error:Invalid Connect message received. (%s, %s)\n",
                         call->callType, call->callToken);
+         }
          else{
              /* H225 message callback */
             if(gH323ep.h225Callbacks.onReceivedConnect)
                gH323ep.h225Callbacks.onReceivedConnect(call, q931Msg);
-
+#ifdef ESTABLISH_TO_CONNECT
             if(gH323ep.h323Callbacks.onCallEstablished)
                gH323ep.h323Callbacks.onCallEstablished(call);
+#endif
          }
          ooFreeQ931Message(q931Msg);
          break;
@@ -1840,4 +1865,146 @@ int ooH323GetIpPortFromH225TransportAddress(struct OOH323CallData *call,
               h225Address->u.ipAddress->ip.data[3]);
    *port = h225Address->u.ipAddress->port;
    return OO_OK;
+}
+
+void ooH323PrintCallId(OOH323CallData *call)
+{
+  int idx = 0 ;
+  char hex[PRINT_CALL_SIZE] = { 0 };
+  char str[PRINT_CALL_SIZE] = { 0 };
+  char loc[PRINT_CALL_SIZE] = { 0 };
+  //char callID[END_PRINT_CALL_SIZE] = { 0 };
+  // char confID[END_PRINT_CALL_SIZE] = { 0 };
+
+  while ( idx < 16 )
+  {
+    snprintf( loc , PRINT_CALL_SIZE , "%02x" , call->callIdentifier.guid.data[idx] );
+    strncat( hex , loc , PRINT_CALL_SIZE );
+    snprintf( loc , PRINT_CALL_SIZE , "%c" , isprint((int)call->callIdentifier.guid.data[idx]) ? call->callIdentifier.guid.data[idx] : '.' );
+    strncat( str , loc , PRINT_CALL_SIZE );
+    idx ++ ;
+  }
+
+  OOTRACEAST(OOTRCLVLDBGA,"Setup callIdentifier:%s [%s] (%s, %s)\n",
+             hex,str,
+             call->callType, call->callToken);
+  idx = 0 ;
+  memset ( hex ,  0 , PRINT_CALL_SIZE );
+  memset ( str ,  0 , PRINT_CALL_SIZE );
+
+  while ( idx < 16 )
+  {
+    snprintf( loc , PRINT_CALL_SIZE , "%02x" , call->confIdentifier.data[idx] );
+    strncat( hex , loc , PRINT_CALL_SIZE );
+    snprintf( loc , PRINT_CALL_SIZE , "%c" , isprint((int)call->confIdentifier.data[idx]) ? call->confIdentifier.data[idx] : '.' );
+    strncat( str , loc , PRINT_CALL_SIZE );
+    idx ++ ;
+  }
+
+ 
+  OOTRACEAST(OOTRCLVLDBGA,"Setup confIdentifier:%s [%s] (%s, %s)\n",
+             hex,str,
+             call->callType, call->callToken);
+  return ;
+}
+
+/*  IVeS : call->confIdentifier.data -> call->chargVectorID */
+void ooH323SetChargVectorID( OOH323CallData *call)
+{
+  int  idx = 0 ;
+  char hex[PRINT_CALL_SIZE] = { 0 };
+  char loc[PRINT_CALL_SIZE] = { 0 };
+
+  if ( call )
+  {
+    memset ( hex ,  0 , PRINT_CALL_SIZE );
+    memset ( call->chargVectorID , 0 , OO_PCV_CID_SIZE );
+    while ( idx <  STR_SIZE_GLOBAL_UNIQUE_ID )
+    {
+      snprintf( loc , PRINT_CALL_SIZE , "%02x" , call->confIdentifier.data[idx] );
+      strncat( hex , loc , PRINT_CALL_SIZE );
+      idx ++ ;
+    }
+    snprintf( call->chargVectorID , OO_PCV_CID_SIZE , "%s" , hex );
+    OOTRACEAST(OOTRCLVLDBGA,"ooH323SetChargVectorID Charging-Vector[%s] (%s, %s)\n",
+               call->chargVectorID,
+               call->callType, call->callToken);
+  }
+  else
+  {
+    OOTRACEERR1("ooH323SetChargVectorID Charging-Vector failed OOH323CallData == NULL \n");
+  }
+}
+
+/*  IVeS : call->chargVectorID ->  call->confIdentifier.data */
+void ooH323GetChargVectorID( OOH323CallData *call)
+{
+  int  idx = 0 ;
+  char hex[3] = { 0,0,0 };
+
+  if ( call )
+  {
+    while ( idx < STR_SIZE_GLOBAL_UNIQUE_ID )
+    {
+      memset( hex , 0 , 3 );
+      memcpy(hex , &call->chargVectorID[idx*2],2 );
+      call->confIdentifier.data[idx]=(char)strtol(hex,NULL,0x10);
+      idx ++ ;
+    }
+    OOTRACEAST(OOTRCLVLDBGA,"ooH323GetChargVectorID Charging-Vector[%s] (%s, %s)\n",
+               call->chargVectorID,
+               call->callType, call->callToken);
+  }
+  else
+  {
+    OOTRACEERR1("ooH323GetChargVectorID Charging-Vector failed OOH323CallData == NULL \n");
+  }
+}
+
+
+/*  IVeS : Terminal information */
+void ooH323SetTerminalInfo( OOH323CallData *call , H225Setup_UUIE *setup)
+{
+  if ( call )
+  {
+    /* Terminal information */
+    OOTRACEAST(OOTRCLVLDBGA,"[H323] ooH323SetTerminalInfo :manufacturerCode %x\n", 
+               setup->sourceInfo.vendor.vendor.manufacturerCode );
+    call->manufacturerCode = setup->sourceInfo.vendor.vendor.manufacturerCode ;
+
+    if ( setup->sourceInfo.vendor.m.productIdPresent )
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323]  ooH323SetTerminalInfo :productId %*s\n", 
+                 setup->sourceInfo.vendor.productId.numocts,
+                 setup->sourceInfo.vendor.productId.data );
+      memset(  call->productId , 0 , OO_PRODUCT_ID_SIZE );
+      snprintf(  call->productId , OO_PRODUCT_ID_SIZE , "%*s" ,
+                 setup->sourceInfo.vendor.productId.numocts,
+                 setup->sourceInfo.vendor.productId.data );
+    }
+    else
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323] ooH323SetTerminalInfo :No productId"); 
+      strncpy(call->productId , "No productId" , OO_PRODUCT_ID_SIZE);
+    }
+
+    if ( setup->sourceInfo.vendor.m.versionIdPresent )
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/Setup] ooH323SetTerminalInfo :versionId %*s\n", 
+                 setup->sourceInfo.vendor.versionId.numocts,
+                 setup->sourceInfo.vendor.versionId.data );
+      snprintf(  call->versionId , OO_PRODUCT_ID_SIZE , "%*s" ,
+                 setup->sourceInfo.vendor.versionId.numocts,
+                 setup->sourceInfo.vendor.versionId.data );
+    }
+    else
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323] ooH323SetTerminalInfo :No versionId"); 
+      strncpy(call->versionId , "No versionId" , OO_PRODUCT_ID_SIZE);
+    }
+  }
+  else
+  {
+    OOTRACEERR1("[H323] ooH323SetTerminalInfo : failed OOH323CallData == NULL \n");
+  }
 }

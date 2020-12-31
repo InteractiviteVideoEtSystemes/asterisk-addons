@@ -34,6 +34,51 @@ static ASN1OBJID gh245ProtocolID = {
   6, { 0, 0, 8, 245, 0, 8 }
 };
 
+#ifdef  CONFIG_CUSTOM
+static int SendMSD  = TRUE ;   // Send MSD after TCS
+static int WaitOLC  = FALSE ; // if Mode Slave , waiting Master OLC for to send my OLC
+#endif
+static int CheckOLC = FALSE ; // Check if mode master and slave send OLC correct
+
+#define STR_MSD_MODE_SIZE     20
+
+static char msd_mode2str[][30]={
+  "undef",
+  "master",
+  "slave"
+};
+
+typedef enum
+{
+  MSD_MODE_UNDEF = 0,
+  MSD_MODE_MASTER,
+  MSD_MODE_SLAVE
+}msd_mode;
+
+msd_mode defMSDMode = MSD_MODE_UNDEF ;
+
+int ooGetVideoLogicalChannel(OOH323CallData *call,ooH323EpCapability** EpCap){
+  OOLogicalChannel * pChannel = NULL;
+  pChannel = call->logicalChans;
+  while(pChannel){
+    if ( pChannel->type == OO_CAP_TYPE_VIDEO   && strcmp( pChannel->dir, "receive") == 0 )
+    {
+      return pChannel->sessionID;
+    }
+    pChannel = pChannel->next;
+  }
+  return 0 ;
+}
+
+int ooShowMSDConfig(void)
+{
+#ifdef  CONFIG_CUSTOM
+  OOTRACEINFO2("\tSend MSD                 : %s\n", (SendMSD)?"true":"false");
+  OOTRACEINFO2("\tWait OLC on Slave Mode   : %s\n", (WaitOLC)?"true":"false");
+#endif
+  OOTRACEINFO2("\tCheck OLC on master mode : %s\n", (CheckOLC)?"true":"false");
+}
+
 int ooCreateH245Message(H245Message **pph245msg, int type)
 {
    OOCTXT* pctxt = &gH323ep.msgctxt;
@@ -93,22 +138,23 @@ int ooCreateH245Message(H245Message **pph245msg, int type)
             }
             break;
 
-         case T_H245MultimediaSystemControlMessage_indication:
-            (*pph245msg)->h245Msg.u.indication = (H245IndicationMessage*)
+        case T_H245MultimediaSystemControlMessage_indication:
+          (*pph245msg)->h245Msg.u.indication = (H245IndicationMessage*)
             memAllocZ (pctxt, sizeof(H245IndicationMessage));
 
-            /*Check for successful mem allocation, and if successful initialize
-              mem to zero*/
-            if(!(*pph245msg)->h245Msg.u.indication)
-            {
-               OOTRACEERR1("ERROR:Memory allocation for H.245 indication"
-                                     " message failed\n");
-               return OO_FAILED;
-            }
-            break;
+          /*Check for successful mem allocation, and if successful initialize
+            mem to zero*/
+          if(!(*pph245msg)->h245Msg.u.indication)
+          {
+            OOTRACEERR1("ERROR:Memory allocation for H.245 indication"
+                        " message failed\n");
+            return OO_FAILED;
+          }
+          break;
 
-         default:
-            OOTRACEERR1("ERROR: H245 message type not supported\n");
+
+        default:
+          OOTRACEERR1("ERROR: H245 message type not supported\n");
       }
 
       return OO_OK;
@@ -241,6 +287,9 @@ int ooSendH245Msg(OOH323CallData *call, H245Message *msg)
    }
    iRet = ooEncodeH245Message(call, msg, encodebuf, MAXMSGLEN);
 
+   // phv
+   ooTraceH245Msg( call , msg , NULL ) ;
+
    if(iRet != OO_OK)
    {
       OOTRACEERR3("Error:Failed to encode H245 message. (%s, %s)\n", 
@@ -311,384 +360,425 @@ int ooSendH245Msg(OOH323CallData *call, H245Message *msg)
 
 int ooSendTermCapMsg(OOH323CallData *call)
 {
-   int ret;
-   H245RequestMessage *request=NULL;
-   OOCTXT *pctxt=NULL;
-   ooH323EpCapability *epCap=NULL;
-   H245TerminalCapabilitySet *termCap=NULL;
-   H245AudioCapability *audioCap=NULL;
-   H245AudioTelephonyEventCapability *ateCap=NULL;
-   H245UserInputCapability *userInputCap = NULL;
-   H245CapabilityTableEntry *entry=NULL;
-   H245AlternativeCapabilitySet *altSet=NULL;
-   H245CapabilityDescriptor *capDesc=NULL;
-   H245Message *ph245msg=NULL;
-   H245VideoCapability *videoCap=NULL;
+  int ret;
+  H245RequestMessage *request=NULL;
+  OOCTXT *pctxt=NULL;
+  ooH323EpCapability *epCap=NULL;
+  H245TerminalCapabilitySet *termCap=NULL;
+  H245AudioCapability *audioCap=NULL;
+  H245AudioTelephonyEventCapability *ateCap=NULL;
+  H245UserInputCapability *userInputCap = NULL;
+  H245CapabilityTableEntry *entry=NULL;
+  H245AlternativeCapabilitySet *altSet=NULL;
+  H245CapabilityDescriptor *capDesc=NULL;
+  H245Message *ph245msg=NULL;
+  H245VideoCapability *videoCap=NULL;
 
-   int i=0, j=0, k=0;
-   if(call->localTermCapState == OO_LocalTermCapSetSent)
-   {
-      OOTRACEINFO3("TerminalCapabilitySet exchange procedure already in "
-                   "progress. (%s, %s)\n", call->callType, call->callToken);
-      return OO_OK;
-   }
+  int i=0, j=0, k=0;
+  if(call->localTermCapState == OO_LocalTermCapSetSent)
+  {
+    OOTRACEINFO3("TerminalCapabilitySet exchange procedure already in progress. (%s, %s)\n", call->callType, call->callToken);
+    return OO_OK;
+  }
  
-   ret = ooCreateH245Message(&ph245msg,  
-                             T_H245MultimediaSystemControlMessage_request);
+  ret = ooCreateH245Message(&ph245msg, T_H245MultimediaSystemControlMessage_request);
  
-   if(ret == OO_FAILED)
-   {
-      OOTRACEERR3("Error:Failed to create H245 message for Terminal "
-                  "CapabilitySet (%s, %s)\n", call->callType,call->callToken);
-      return OO_FAILED;
-   }
+  if(ret == OO_FAILED)
+  {
+    OOTRACEERR3("Error:Failed to create H245 message for Terminal CapabilitySet (%s, %s)\n", call->callType,call->callToken);
+    return OO_FAILED;
+  }
 
   /* Set request type as TerminalCapabilitySet */
-   request = ph245msg->h245Msg.u.request;
-   pctxt = &gH323ep.msgctxt;
-   ph245msg->msgType = OOTerminalCapabilitySet;
-   memset(request, 0, sizeof(H245RequestMessage));
-   if(request == NULL)
-   {
-      OOTRACEERR3("ERROR: No memory allocated for request message (%s, %s)\n",
-                   call->callType, call->callToken);
-      return OO_FAILED;
-   }
+  request = ph245msg->h245Msg.u.request;
+  pctxt = &gH323ep.msgctxt;
+  ph245msg->msgType = OOTerminalCapabilitySet;
+  memset(request, 0, sizeof(H245RequestMessage));
+  if(request == NULL)
+  {
+    OOTRACEERR3("ERROR: No memory allocated for request message (%s, %s)\n",
+                call->callType, call->callToken);
+    return OO_FAILED;
+  }
    
-   request->t = T_H245RequestMessage_terminalCapabilitySet;
-   request->u.terminalCapabilitySet = (H245TerminalCapabilitySet*)
-                  memAlloc(pctxt, sizeof(H245TerminalCapabilitySet)); 
-   termCap = request->u.terminalCapabilitySet;
-   memset(termCap, 0, sizeof(H245TerminalCapabilitySet));
-   termCap->m.multiplexCapabilityPresent = 0;
-   termCap->m.capabilityTablePresent = 1;
-   termCap->m.capabilityDescriptorsPresent = 1;
-   termCap->sequenceNumber = ++(call->localTermCapSeqNo);  
-   termCap->protocolIdentifier = gh245ProtocolID; /* protocol id */
+  request->t = T_H245RequestMessage_terminalCapabilitySet;
+  request->u.terminalCapabilitySet = (H245TerminalCapabilitySet*)
+    memAlloc(pctxt, sizeof(H245TerminalCapabilitySet)); 
+  termCap = request->u.terminalCapabilitySet;
+  memset(termCap, 0, sizeof(H245TerminalCapabilitySet));
+  termCap->m.multiplexCapabilityPresent = 0;
+  termCap->m.capabilityTablePresent = 1;
+  termCap->m.capabilityDescriptorsPresent = 1;
+  termCap->sequenceNumber = ++(call->localTermCapSeqNo);  
+  termCap->protocolIdentifier = gh245ProtocolID; /* protocol id */
 
-   /* Add audio Capabilities */
- 
-   dListInit(&(termCap->capabilityTable));
-   for(k=0; k<(int)call->capPrefs.index; k++)
-   {
-      if(call->ourCaps)
-         epCap = call->ourCaps;
-      else
-         epCap = gH323ep.myCaps;
-      while(epCap) { 
-         if(epCap->cap == call->capPrefs.order[k]) 
-            break;
-         epCap = epCap->next;
-      }
-      if(!epCap)
+  /* Add audio Capabilities */
+  OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : nb caps[%d]\n",call->capPrefs.index);
+
+  dListInit(&(termCap->capabilityTable));
+  for(k=0; k<(int)call->capPrefs.index; k++)
+  {
+    if(call->ourCaps)
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : Using call caps \n");
+      epCap = call->ourCaps;
+    }
+    else
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : Using global caps \n");
+      epCap = gH323ep.myCaps;
+    }
+     
+    while(epCap) 
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg :check order %s \n",ooGetCapTypeText(epCap->cap));
+     
+      if(epCap->cap == call->capPrefs.order[k]) 
+        break;
+      epCap = epCap->next;
+    }
+
+    if(!epCap)
+    {
+      OOTRACEWARN4("WARN:Preferred capability %d not supported.(%s, %s)\n", call->capPrefs.order[k],call->callType, call->callToken);
+      continue;
+    }
+
+    if(epCap->capType == OO_CAP_TYPE_AUDIO)
+    {
+
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg :Add audio caps.\n");
+
+      /* Create audio capability. If capability supports receive, we only 
+         add it as receive capability in TCS. However, if it supports only 
+         transmit, we add it as transmit capability in TCS.
+      */
+      if((epCap->dir & OORX))
       {
-         OOTRACEWARN4("WARN:Preferred capability %d not supported.(%s, %s)\n",
-                     call->capPrefs.order[k],call->callType, call->callToken);
-         continue;
+
+        OOTRACEDBGC4("Sending receive capability %s in TCS.(%s, %s)\n",
+                     ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
+
+        audioCap = ooCapabilityCreateAudioCapability(epCap, pctxt, OORX);
+        if(!audioCap)
+        {
+          OOTRACEWARN4("WARN:Failed to create audio capability %s (%s, %s)\n", 
+                       ooGetCapTypeText(epCap->cap),  call->callType, call->callToken);
+          continue;
+        }
       }
-
-      if(epCap->capType == OO_CAP_TYPE_AUDIO)
+      else if(epCap->dir & OOTX)
       {
-
-         /* Create audio capability. If capability supports receive, we only 
-            add it as receive capability in TCS. However, if it supports only 
-            transmit, we add it as transmit capability in TCS.
-         */
-         if((epCap->dir & OORX))
-         {
-
-            OOTRACEDBGC4("Sending receive capability %s in TCS.(%s, %s)\n",
-                ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
-
-            audioCap = ooCapabilityCreateAudioCapability(epCap, pctxt, OORX);
-            if(!audioCap)
-            {
-               OOTRACEWARN4("WARN:Failed to create audio capability %s "
-                            "(%s, %s)\n", ooGetCapTypeText(epCap->cap), 
-                            call->callType, call->callToken);
-               continue;
-            }
-         }
-         else if(epCap->dir & OOTX)
-         {
-            OOTRACEDBGC4("Sending transmit capability %s in TCS.(%s, %s)\n",
-                ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
-            audioCap = ooCapabilityCreateAudioCapability(epCap, pctxt, OOTX);
-            if(!audioCap)
-            {
-               OOTRACEWARN4("WARN:Failed to create audio capability %s "
-                            "(%s, %s)\n", ooGetCapTypeText(epCap->cap),
-                            call->callType, call->callToken);
-               continue;
-            }     
-         }
-         else{
-            OOTRACEWARN3("Warn:Capability is not RX/TX/RXANDTX. Symmetric "
-                         "capabilities are not supported.(%s, %s)\n", 
-                         call->callType, call->callToken);
-            continue;
-         }
-         /* Add  Capabilities to Capability Table */
-         entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
-                         sizeof(H245CapabilityTableEntry));
-         if(!entry)
-         {
-            OOTRACEERR3("Error:Memory - ooSendTermCapMsg - entry(audio Cap)."
-                        "(%s, %s)\n", call->callType, call->callToken);
-            return OO_FAILED;
-         }
-         memset(entry, 0, sizeof(H245CapabilityTableEntry));
-         entry->m.capabilityPresent = 1;
-         if((epCap->dir & OORX))
-         {
-            entry->capability.t = T_H245Capability_receiveAudioCapability;
-            entry->capability.u.receiveAudioCapability = audioCap;
-         }
-         else{
-            entry->capability.t = T_H245Capability_transmitAudioCapability;
-            entry->capability.u.transmitAudioCapability = audioCap;
-         }
-         entry->capabilityTableEntryNumber = i+1;
-         dListAppend(pctxt , &(termCap->capabilityTable), entry);
-         i++;
+        OOTRACEDBGC4("Sending transmit capability %s in TCS.(%s, %s)\n",
+                     ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
+        audioCap = ooCapabilityCreateAudioCapability(epCap, pctxt, OOTX);
+        if(!audioCap)
+        {
+          OOTRACEWARN4("WARN:Failed to create audio capability %s "
+                       "(%s, %s)\n", ooGetCapTypeText(epCap->cap),
+                       call->callType, call->callToken);
+          continue;
+        }     
       }
-      else if(epCap->capType == OO_CAP_TYPE_VIDEO)
-      {
-         if((epCap->dir & OORX))
-         {
-            OOTRACEDBGC4("Sending receive capability %s in TCS.(%s, %s)\n",
-                ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
-            videoCap = ooCapabilityCreateVideoCapability(epCap, pctxt, OORX);
-            if(!videoCap)
-            {
-               OOTRACEWARN4("WARN:Failed to create Video capability %s "
-                            "(%s, %s)\n", ooGetCapTypeText(epCap->cap),
-                           call->callType, call->callToken);
-               continue;
-            }
-         }
-         else if(epCap->dir & OOTX)
-         {
-            OOTRACEDBGC4("Sending transmit capability %s in TCS.(%s, %s)\n",
-                ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
-            videoCap = ooCapabilityCreateVideoCapability(epCap, pctxt, OOTX);
-            if(!videoCap)
-            {
-               OOTRACEWARN4("WARN:Failed to create video capability %s "
-                            "(%s, %s)\n", ooGetCapTypeText(epCap->cap),
-                           call->callType, call->callToken);
-               continue;
-            }     
-         }
-         else{
-            OOTRACEWARN3("Warn:Capability is not RX/TX/RXANDTX. Symmetric "
-                         "capabilities are not supported.(%s, %s)\n", 
-                         call->callType, call->callToken);
-            continue;
-         }
-         /* Add Video capabilities to Capability Table */
-         entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
-                            sizeof(H245CapabilityTableEntry));
-         if(!entry)
-         {
-            OOTRACEERR3("Error:Memory - ooSendTermCapMsg - entry(video Cap)."
-                        "(%s, %s)\n", call->callType, call->callToken);
-            return OO_FAILED;
-         }
-         memset(entry, 0, sizeof(H245CapabilityTableEntry));
-         entry->m.capabilityPresent = 1;
-         if((epCap->dir & OORX))
-         {
-            entry->capability.t = T_H245Capability_receiveVideoCapability;
-            entry->capability.u.receiveVideoCapability = videoCap;
-         }
-         else{
-            entry->capability.t = T_H245Capability_transmitVideoCapability;
-            entry->capability.u.transmitVideoCapability = videoCap;
-         }
-         entry->capabilityTableEntryNumber = i+1;
-         dListAppend(pctxt , &(termCap->capabilityTable), entry);
-         i++;
-      }
-   }
-   /* Add dtmf capability, if any */
-   if(call->dtmfmode & OO_CAP_DTMF_RFC2833)
-   {
-      ateCap = (H245AudioTelephonyEventCapability*)
-                  ooCapabilityCreateDTMFCapability(OO_CAP_DTMF_RFC2833, pctxt);
-      if(!ateCap)
-      {
-         OOTRACEWARN3("WARN:Failed to add RFC2833 cap to TCS(%s, %s)\n",
+      else{
+        OOTRACEWARN3("Warn:Capability is not RX/TX/RXANDTX. Symmetric "
+                     "capabilities are not supported.(%s, %s)\n", 
                      call->callType, call->callToken);
+        continue;
       }
-      else {
-         entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
-                      sizeof(H245CapabilityTableEntry));
-         if(!entry)
-         {
-            OOTRACEERR3("Error:Failed to allocate memory for new capability "
-                        "table entry. (%s, %s)\n", call->callType, 
-                        call->callToken);
-            ooFreeH245Message(call, ph245msg);
-            return OO_FAILED;
-         }
-            
-         memset(entry, 0, sizeof(H245CapabilityTableEntry));
-         entry->m.capabilityPresent = 1;
-
-         entry->capability.t = T_H245Capability_receiveRTPAudioTelephonyEventCapability;
-         entry->capability.u.receiveRTPAudioTelephonyEventCapability = ateCap;
-      
-         entry->capabilityTableEntryNumber = i+1;
-         dListAppend(pctxt , &(termCap->capabilityTable), entry);
-
-         i++;
-      }
-   }
-
-   if(call->dtmfmode & OO_CAP_DTMF_H245_alphanumeric)
-   {
-      userInputCap = (H245UserInputCapability*)ooCapabilityCreateDTMFCapability
-                                        (OO_CAP_DTMF_H245_alphanumeric, pctxt);
-      if(!userInputCap)
+      /* Add  Capabilities to Capability Table */
+      entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
+                                                   sizeof(H245CapabilityTableEntry));
+      if(!entry)
       {
-         OOTRACEWARN3("WARN:Failed to add H245(alphanumeric) cap to "
-                      "TCS(%s, %s)\n", call->callType, call->callToken);
+        OOTRACEERR3("Error:Memory - ooSendTermCapMsg - entry(audio Cap)."
+                    "(%s, %s)\n", call->callType, call->callToken);
+        return OO_FAILED;
       }
-      else {
-         entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
-                      sizeof(H245CapabilityTableEntry));
-         if(!entry)
-         {
-            OOTRACEERR3("Error:Failed to allocate memory for new capability "
-                        "table entry. (%s, %s)\n", call->callType, 
-                        call->callToken);
-            ooFreeH245Message(call, ph245msg);
-            return OO_FAILED;
-         }
-            
-         memset(entry, 0, sizeof(H245CapabilityTableEntry));
-         entry->m.capabilityPresent = 1;
-
-         entry->capability.t = T_H245Capability_receiveUserInputCapability;
-         entry->capability.u.receiveUserInputCapability = userInputCap;
-      
-         entry->capabilityTableEntryNumber = i+1;
-         dListAppend(pctxt , &(termCap->capabilityTable), entry);
-
-         i++;
-      }
-   }
-   userInputCap = NULL;
-   if(call->dtmfmode & OO_CAP_DTMF_H245_signal)
-   {
-      userInputCap = (H245UserInputCapability*)ooCapabilityCreateDTMFCapability
-                                        (OO_CAP_DTMF_H245_signal, pctxt);
-      if(!userInputCap)
+      memset(entry, 0, sizeof(H245CapabilityTableEntry));
+      entry->m.capabilityPresent = 1;
+      if((epCap->dir & OORX))
       {
-         OOTRACEWARN3("WARN:Failed to add H245(signal) cap to "
-                      "TCS(%s, %s)\n", call->callType, call->callToken);
+        entry->capability.t = T_H245Capability_receiveAudioCapability;
+        entry->capability.u.receiveAudioCapability = audioCap;
       }
-      else {
-         entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
-                      sizeof(H245CapabilityTableEntry));
-         if(!entry)
-         {
-            OOTRACEERR3("Error:Failed to allocate memory for new capability "
-                        "table entry. (%s, %s)\n", call->callType, 
-                        call->callToken);
-            ooFreeH245Message(call, ph245msg);
-            return OO_FAILED;
-         }
+      else{
+        entry->capability.t = T_H245Capability_transmitAudioCapability;
+        entry->capability.u.transmitAudioCapability = audioCap;
+      }
+      entry->capabilityTableEntryNumber = i+1;
+      dListAppend(pctxt , &(termCap->capabilityTable), entry);
+      i++;
+    }
+    else if(epCap->capType == OO_CAP_TYPE_VIDEO)
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg :Add video caps.\n");
+      if((epCap->dir & OORX))
+      {
+        OOTRACEDBGC4("Sending receive capability %s in TCS.(%s, %s)\n",
+                     ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
+        videoCap = ooCapabilityCreateVideoCapability(epCap, pctxt, OORX);
+        if(!videoCap)
+        {
+          OOTRACEWARN4("WARN:Failed to create Video capability %s "
+                       "(%s, %s)\n", ooGetCapTypeText(epCap->cap),
+                       call->callType, call->callToken);
+          continue;
+        }
+        else
+        {
+          switch(epCap->cap)
+          {
+            case OO_H263VIDEO:
+              call->CallHaveH263 = TRUE ;
+              break; 
+            case OO_GENERICVIDEO: /* = H.264 */
+              call->CallHaveH264 = TRUE ;
+              break ; 
+          }
+        }
+      }
+      else if(epCap->dir & OOTX)
+      {
+        OOTRACEDBGC4("Sending transmit capability %s in TCS.(%s, %s)\n",
+                     ooGetCapTypeText(epCap->cap), call->callType, call->callToken);
+        videoCap = ooCapabilityCreateVideoCapability(epCap, pctxt, OOTX);
+        if(!videoCap)
+        {
+          OOTRACEWARN4("WARN:Failed to create video capability %s "
+                       "(%s, %s)\n", ooGetCapTypeText(epCap->cap),
+                       call->callType, call->callToken);
+          continue;
+        } 
+        else
+        {
+          switch(epCap->cap)
+          {
+            case OO_H263VIDEO:
+              call->CallHaveH263 = TRUE ;
+              break; 
+            case OO_GENERICVIDEO: /* = H.264 */
+              call->CallHaveH264 = TRUE ;
+              break ; 
+          }
+        }   
+      }
+      else{
+        OOTRACEWARN3("Warn:Capability is not RX/TX/RXANDTX. Symmetric "
+                     "capabilities are not supported.(%s, %s)\n", 
+                     call->callType, call->callToken);
+        continue;
+      }
+      /* Add Video capabilities to Capability Table */
+      entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
+                                                   sizeof(H245CapabilityTableEntry));
+      if(!entry)
+      {
+        OOTRACEERR3("Error:Memory - ooSendTermCapMsg - entry(video Cap)."
+                    "(%s, %s)\n", call->callType, call->callToken);
+        return OO_FAILED;
+      }
+      memset(entry, 0, sizeof(H245CapabilityTableEntry));
+      entry->m.capabilityPresent = 1;
+      if((epCap->dir & OORX))
+      {
+        entry->capability.t = T_H245Capability_receiveVideoCapability;
+        entry->capability.u.receiveVideoCapability = videoCap;
+      }
+      else{
+        entry->capability.t = T_H245Capability_transmitVideoCapability;
+        entry->capability.u.transmitVideoCapability = videoCap;
+      }
+      entry->capabilityTableEntryNumber = i+1;
+      dListAppend(pctxt , &(termCap->capabilityTable), entry);
+      i++;
+    }
+  }
+
+  OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : dtmf mode [%d] \n",call->dtmfmode);
+  /* Add dtmf capability, if any */
+  if(call->dtmfmode & OO_CAP_DTMF_RFC2833)
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : %d send dtmf 2833\n",i);  
+    ateCap = (H245AudioTelephonyEventCapability*)
+      ooCapabilityCreateDTMFCapability(OO_CAP_DTMF_RFC2833, pctxt);
+    if(!ateCap)
+    {
+      OOTRACEWARN3("WARN:Failed to add RFC2833 cap to TCS(%s, %s)\n",
+                   call->callType, call->callToken);
+    }
+    else {
+      entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
+                                                   sizeof(H245CapabilityTableEntry));
+      if(!entry)
+      {
+        OOTRACEERR3("Error:Failed to allocate memory for new capability "
+                    "table entry. (%s, %s)\n", call->callType, 
+                    call->callToken);
+        ooFreeH245Message(call, ph245msg);
+        return OO_FAILED;
+      }
             
-         memset(entry, 0, sizeof(H245CapabilityTableEntry));
-         entry->m.capabilityPresent = 1;
+      memset(entry, 0, sizeof(H245CapabilityTableEntry));
+      entry->m.capabilityPresent = 1;
 
-         entry->capability.t = T_H245Capability_receiveUserInputCapability;
-         entry->capability.u.receiveUserInputCapability = userInputCap;
+      entry->capability.t = T_H245Capability_receiveRTPAudioTelephonyEventCapability;
+      entry->capability.u.receiveRTPAudioTelephonyEventCapability = ateCap;
       
-         entry->capabilityTableEntryNumber = i+1;
-         dListAppend(pctxt , &(termCap->capabilityTable), entry);
+      entry->capabilityTableEntryNumber = i+1;
+      dListAppend(pctxt , &(termCap->capabilityTable), entry);
 
-         i++;
+      i++;
+    }
+  }
+
+  if(call->dtmfmode & OO_CAP_DTMF_H245_alphanumeric)
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : %d send dtmf alpha\n",i);  
+    userInputCap = (H245UserInputCapability*)ooCapabilityCreateDTMFCapability
+      (OO_CAP_DTMF_H245_alphanumeric, pctxt);
+    if(!userInputCap)
+    {
+      OOTRACEWARN3("WARN:Failed to add H245(alphanumeric) cap to "
+                   "TCS(%s, %s)\n", call->callType, call->callToken);
+    }
+    else {
+      entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
+                                                   sizeof(H245CapabilityTableEntry));
+      if(!entry)
+      {
+        OOTRACEERR3("Error:Failed to allocate memory for new capability "
+                    "table entry. (%s, %s)\n", call->callType, 
+                    call->callToken);
+        ooFreeH245Message(call, ph245msg);
+        return OO_FAILED;
       }
-   }
+            
+      memset(entry, 0, sizeof(H245CapabilityTableEntry));
+      entry->m.capabilityPresent = 1;
+
+      entry->capability.t = T_H245Capability_receiveUserInputCapability;
+      entry->capability.u.receiveUserInputCapability = userInputCap;
+      
+      entry->capabilityTableEntryNumber = i+1;
+      dListAppend(pctxt , &(termCap->capabilityTable), entry);
+
+      i++;
+    }
+  }
+  userInputCap = NULL;
+  if(call->dtmfmode & OO_CAP_DTMF_H245_signal)
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : %d send dtmf signal\n",i);  
+    userInputCap = (H245UserInputCapability*)ooCapabilityCreateDTMFCapability
+      (OO_CAP_DTMF_H245_signal, pctxt);
+    if(!userInputCap)
+    {
+      OOTRACEWARN3("WARN:Failed to add H245(signal) cap to "
+                   "TCS(%s, %s)\n", call->callType, call->callToken);
+    }
+    else {
+      entry = (H245CapabilityTableEntry*) memAlloc(pctxt,
+                                                   sizeof(H245CapabilityTableEntry));
+      if(!entry)
+      {
+        OOTRACEERR3("Error:Failed to allocate memory for new capability "
+                    "table entry. (%s, %s)\n", call->callType, 
+                    call->callToken);
+        ooFreeH245Message(call, ph245msg);
+        return OO_FAILED;
+      }
+            
+      memset(entry, 0, sizeof(H245CapabilityTableEntry));
+      entry->m.capabilityPresent = 1;
+
+      entry->capability.t = T_H245Capability_receiveUserInputCapability;
+      entry->capability.u.receiveUserInputCapability = userInputCap;
+      
+      entry->capabilityTableEntryNumber = i+1;
+      dListAppend(pctxt , &(termCap->capabilityTable), entry);
+
+      i++;
+    }
+  }
 
           
-   /*TODO:Add Video and Data capabilities, if required*/
-   if(i==0)
-   {
-      OOTRACEERR3("Error:No capabilities found to send in TCS message."
-                  " (%s, %s)\n", call->callType, call->callToken);
-      ooFreeH245Message(call,ph245msg);
-      return OO_FAILED;
-   }
+  /*TODO:Add Video and Data capabilities, if required*/
+  if(i==0)
+  {
+    OOTRACEERR3("Error:No capabilities found to send in TCS message."
+                " (%s, %s)\n", call->callType, call->callToken);
+    ooFreeH245Message(call,ph245msg);
+    return OO_FAILED;
+  }
       
-   /* Define capability descriptior */
-   capDesc = (H245CapabilityDescriptor*)
-             memAlloc(pctxt, sizeof(H245CapabilityDescriptor));
-   memset(capDesc, 0, sizeof(H245CapabilityDescriptor));
-   capDesc->m.simultaneousCapabilitiesPresent = 1;
-   capDesc->capabilityDescriptorNumber = 1;
-   dListInit(&(capDesc->simultaneousCapabilities));
-   /* Add Alternative Capability Set.
-      TODO: Right now all capabilities are added in separate
-            alternate capabilities set. Need a way for application
-            developer to specify the alternative capability sets.
-   */
-   for(j=0; j<i; j++)
-   {
-      altSet = (H245AlternativeCapabilitySet*)
-               memAlloc(pctxt, sizeof(H245AlternativeCapabilitySet));
-      memset(altSet, 0, sizeof(H245AlternativeCapabilitySet));
-      altSet->n = 1;
-      altSet->elem[0] = j+1;
+  /* Define capability descriptior */
+  capDesc = (H245CapabilityDescriptor*)
+    memAlloc(pctxt, sizeof(H245CapabilityDescriptor));
+  memset(capDesc, 0, sizeof(H245CapabilityDescriptor));
+  capDesc->m.simultaneousCapabilitiesPresent = 1;
+  capDesc->capabilityDescriptorNumber = 1;
+  dListInit(&(capDesc->simultaneousCapabilities));
+  /* Add Alternative Capability Set.
+     TODO: Right now all capabilities are added in separate
+     alternate capabilities set. Need a way for application
+     developer to specify the alternative capability sets.
+  */
+  OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooSendTermCapMsg : %d codec build list\n",i);  
+  for(j=0; j<i; j++)
+  {
+    altSet = (H245AlternativeCapabilitySet*)
+      memAlloc(pctxt, sizeof(H245AlternativeCapabilitySet));
+    memset(altSet, 0, sizeof(H245AlternativeCapabilitySet));
+    altSet->n = 1;
+    altSet->elem[0] = j+1;
    
-      dListAppend(pctxt, &(capDesc->simultaneousCapabilities), altSet);
-   }
+    dListAppend(pctxt, &(capDesc->simultaneousCapabilities), altSet);
+  }
 
-   dListInit(&(termCap->capabilityDescriptors));
-   dListAppend(pctxt, &(termCap->capabilityDescriptors), capDesc);
+  dListInit(&(termCap->capabilityDescriptors));
+  dListAppend(pctxt, &(termCap->capabilityDescriptors), capDesc);
 
-   OOTRACEDBGA3("Built terminal capability set message (%s, %s)\n", 
-                 call->callType, call->callToken);
-   ret = ooSendH245Msg(call, ph245msg);
-   if(ret != OO_OK)
-   {
-      OOTRACEERR3("Error:Failed to enqueue TCS message to outbound queue. "
-                  "(%s, %s)\n", call->callType, call->callToken);
-   }
-   else {
-      call->localTermCapState = OO_LocalTermCapSetSent;
-   }
+  OOTRACEAST(OOTRCLVLDBGA,"Built terminal capability send message (%s, %s)\n", 
+             call->callType, call->callToken);
+  ret = ooSendH245Msg(call, ph245msg);
+  if(ret != OO_OK)
+  {
+    OOTRACEERR3("Error:Failed to enqueue TCS message to outbound queue. "
+                "(%s, %s)\n", call->callType, call->callToken);
+  }
+  else {
+    call->localTermCapState = OO_LocalTermCapSetSent;
+  }
 
-   ooFreeH245Message(call,ph245msg);
+  ooFreeH245Message(call,ph245msg);
 
-   return ret;
+  return ret;
 }
 
 
 ASN1UINT ooGenerateStatusDeterminationNumber()
 {
-   ASN1UINT statusDeterminationNumber;
-   ASN1UINT random_factor = getpid();
-
+  ASN1UINT statusDeterminationNumber;
+  ASN1UINT random_factor = getpid();
 #ifdef _WIN32
-   SYSTEMTIME systemTime;
-   GetLocalTime(&systemTime);
-   srand((systemTime.wMilliseconds ^ systemTime.wSecond) + random_factor);
+  SYSTEMTIME systemTime;
+  GetLocalTime(&systemTime);
+  srand((systemTime.wMilliseconds ^ systemTime.wSecond) + random_factor);
 #else
-   struct timeval tv;
-   gettimeofday(&tv, NULL);
-   srand((tv.tv_usec ^ tv.tv_sec) + random_factor );
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  srand((tv.tv_usec ^ tv.tv_sec) + random_factor );
 #endif
-
-   statusDeterminationNumber = rand()%16777215;
-   return statusDeterminationNumber;
+  statusDeterminationNumber = rand()%16777215;
+  OOTRACEAST(OOTRCLVLDBGA,"[MSD] ooGenerateStatusDeterminationNumber default mode[%s] statusDeterminationNumber[%d] \n",
+             msd_mode2str[defMSDMode],statusDeterminationNumber);
+  return statusDeterminationNumber;
 }
+
 /* TODO: Should Send MasterSlave Release when no response from 
-         Remote endpoint after MasterSlaveDetermination sent within
-         timeout.
+   Remote endpoint after MasterSlaveDetermination sent within
+   timeout.
 */
 int ooHandleMasterSlave(OOH323CallData *call, void * pmsg, 
                           int msgType)
@@ -700,125 +790,245 @@ int ooHandleMasterSlave(OOH323CallData *call, void * pmsg,
    switch(msgType)
    {
       case OOMasterSlaveDetermination:
-         OOTRACEINFO3("Master Slave Determination received (%s, %s)\n",
-                       call->callType, call->callToken);
-         
-         masterSlave = (H245MasterSlaveDetermination*)pmsg;
+        /* 
+           http://web.stsproject.net/index.php/cisco/h323/42-h245-masterslave-determination
+           The determination principle is: 
+           the endpoint with larger terminaltype value is "Master".
+           If the terminaltype values are the same, the endpoint with larger StatusDeterminationNumber is Master.
+        */
+        masterSlave = (H245MasterSlaveDetermination*)pmsg;
+        OOTRACEAST(OOTRCLVLDBGA,"[MSD] Master Slave Determination received  type (distant/local) [%d/%d]  number[%d/%d] MSD aldready sent[%s] default mode[%s]  (%s, %s)\n",
+                   masterSlave->terminalType , gH323ep.termType,
+                   masterSlave->statusDeterminationNumber , (call->masterSlaveState >= OO_MasterSlave_DetermineSent)?call->statusDeterminationNumber:0,
+                   (call->masterSlaveState >= OO_MasterSlave_DetermineSent)?"true":"false",
+                   msd_mode2str[defMSDMode],
+                   call->callType, call->callToken);
          
          if(masterSlave->terminalType < gH323ep.termType)
          {
             ooSendMasterSlaveDeterminationAck(call, "slave");
-            call->masterSlaveState =  OO_MasterSlave_Master;
-            OOTRACEINFO3("MasterSlaveDetermination done - Master(%s, %s)\n",
-                             call->callType, call->callToken);
+            call->masterSlaveState =  OO_MasterSlave_AckSent;
+            OOTRACEINFO3("[MSD] MasterSlaveDetermination by type -distant[slave] local[master](%s, %s)\n", call->callType, call->callToken);
             return OO_OK;
          }
-         if(masterSlave->terminalType > gH323ep.termType)
+         else if(masterSlave->terminalType > gH323ep.termType)
          {
-            ooSendMasterSlaveDeterminationAck(call, "master");
-            call->masterSlaveState =  OO_MasterSlave_Slave;
-            OOTRACEINFO3("MasterSlaveDetermination done - Slave(%s, %s)\n",
-                             call->callType, call->callToken);
-            return OO_OK;
+           ooSendMasterSlaveDeterminationAck(call, "master");
+           call->masterSlaveState =  OO_MasterSlave_AckSent;
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination by type -distant[master] local[slave]  (%s, %s)\n", call->callType, call->callToken);
+           return OO_OK;
          }
+
+
          /* Since term types are same, master slave determination will
             be done based on statusdetermination number
          */
-         
-         OOTRACEDBGA3("Determining master-slave based on StatusDetermination"
+         OOTRACEINFO3("[MSD] Determining master-slave based on StatusDetermination"
                       "Number (%s, %s)\n", call->callType, call->callToken);
-         if(call->masterSlaveState == OO_MasterSlave_DetermineSent)
-            statusDeterminationNumber = call->statusDeterminationNumber;
-         else
-            statusDeterminationNumber = ooGenerateStatusDeterminationNumber();
-         
-         if(masterSlave->statusDeterminationNumber < 
-                       statusDeterminationNumber)
-         {
-            ooSendMasterSlaveDeterminationAck(call, "slave");
-            call->masterSlaveState =  OO_MasterSlave_Master;
-            OOTRACEINFO3("MasterSlaveDetermination done - Master(%s, %s)\n",
-                             call->callType, call->callToken);
-            return OO_OK;
+         if(call->masterSlaveState == OO_MasterSlave_DetermineSent){
+           statusDeterminationNumber = call->statusDeterminationNumber;
+         } else {
+           statusDeterminationNumber = ooGenerateStatusDeterminationNumber();
          }
-         if(masterSlave->statusDeterminationNumber > 
-                         statusDeterminationNumber)
-         {
-            ooSendMasterSlaveDeterminationAck(call, "master");
-            call->masterSlaveState =  OO_MasterSlave_Slave;
-            OOTRACEINFO3("MasterSlaveDetermination done - Slave(%s, %s)\n",
-                             call->callType, call->callToken);
-            return OO_OK;
-         }
-         if(masterSlave->statusDeterminationNumber == 
-                         statusDeterminationNumber)
-         {
-            ooSendMasterSlaveDeterminationReject (call);
-
-            OOTRACEERR3("ERROR:MasterSlaveDetermination failed- identical "
-                        "numbers (%s, %s)\n", call->callType, call->callToken);
-         }
-         break;
-
-      case OOMasterSlaveAck:
-         masterSlaveAck = (H245MasterSlaveDeterminationAck*)pmsg;
-         if(call->masterSlaveState == OO_MasterSlave_DetermineSent)
-         {
-            if(masterSlaveAck->decision.t == 
-               T_H245MasterSlaveDeterminationAck_decision_master)
-            {
-               ooSendMasterSlaveDeterminationAck(call, "slave");
-               call->masterSlaveState =  OO_MasterSlave_Master;
-               OOTRACEINFO3("MasterSlaveDetermination done - Master(%s, %s)\n",
-                             call->callType, call->callToken);
-            }
-            else
-            {
-               ooSendMasterSlaveDeterminationAck(call, "master");
-               call->masterSlaveState = OO_MasterSlave_Slave;
-               OOTRACEINFO3("MasterSlaveDetermination done - Slave(%s, %s)\n",
-                             call->callType, call->callToken);
-            }
-         }
-         
-         if(call->localTermCapState == OO_LocalTermCapSetAckRecvd &&
-            call->remoteTermCapState == OO_RemoteTermCapSetAckSent)
-         {
-            /*Since Cap exchange and MasterSlave Procedures are done */
-            if(gH323ep.h323Callbacks.openLogicalChannels)
-               gH323ep.h323Callbacks.openLogicalChannels(call);
-            else{
-               if(!call->logicalChans)
-                  ooOpenLogicalChannels(call);
-            }
+         call->statusDeterminationNumber = statusDeterminationNumber ; 
+   
 #if 0
-            if(!call->logicalChans){
-               if(!gH323ep.h323Callbacks.openLogicalChannels)
-                  ooOpenLogicalChannels(call);
-               else
-                  gH323ep.h323Callbacks.openLogicalChannels(call);
-            }
-#endif
+         if(masterSlave->statusDeterminationNumber >  statusDeterminationNumber)
+         {
+           ooSendMasterSlaveDeterminationAck(call, "master");
+           call->masterSlaveState = OO_MasterSlave_AckSent;
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination send ACK - distant[master] local[slave] (%s, %s)\n", call->callType, call->callToken);
+           return OO_OK;
+         }
+         else if(masterSlave->statusDeterminationNumber < statusDeterminationNumber)
+         {
+           ooSendMasterSlaveDeterminationAck(call, "slave");
+           call->masterSlaveState = OO_MasterSlave_AckSent ;
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination send ACK - distant[slave] local[master] (%s, %s)\n", call->callType, call->callToken);
+           return OO_OK;
          }
          else
-            OOTRACEDBGC1("Not opening logical channels as Cap exchange "
-                         "remaining\n");
+         {
+           ooSendMasterSlaveDeterminationReject (call);
+           OOTRACEERR3("[MSD] ERROR:MasterSlaveDetermination failed- identical "
+                       "numbers (%s, %s)\n", call->callType, call->callToken);
+         }
+#else
+         /* According to the the H.245 Spec (05/2006) Figure C4, the calculation is as follows:
+            MAX_SDN = (2^24)-1
+            SDN_DIFF = (remoteSDN - localSDN)
+            if ((SDN_DIFF MOD MAX_SND ) < 2^23 ) //  2^23 == 0xFFFFFF
+            {
+            MASTER
+            } else {
+            SLAVE
+            } 
+         */
+         ASN1UINT moduloDiff = (masterSlave->statusDeterminationNumber - statusDeterminationNumber)&0xffffff;
+         if (moduloDiff == 0 || moduloDiff == 0x800000){
+           ooSendMasterSlaveDeterminationReject (call);
+           OOTRACEERR3("[MSD] ERROR:MasterSlaveDetermination failed- identical "
+                       "numbers (%s, %s)\n", call->callType, call->callToken);
+         }
+         else if (moduloDiff < 0x800000){
+           ooSendMasterSlaveDeterminationAck(call, "slave");
+           call->masterSlaveState = OO_MasterSlave_AckSent ;
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination send ACK - distant[slave] local[master] (%s, %s)\n", call->callType, call->callToken);
+           return OO_OK;
+         }
+         else{
+           ooSendMasterSlaveDeterminationAck(call, "master");
+           call->masterSlaveState = OO_MasterSlave_AckSent;
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination send ACK - distant[master] local[slave] (%s, %s)\n", call->callType, call->callToken);
+           return OO_OK;
+         }
+#endif
          break;
-       default:
-          OOTRACEWARN3("Warn:Unhandled Master Slave message received - %s - "
-                       "%s\n", call->callType, call->callToken);
+
+     case OOMasterSlaveAck:
+       masterSlaveAck = (H245MasterSlaveDeterminationAck*)pmsg;
+       OOTRACEAST(OOTRCLVLDBGA,"[MSD] Master Slave ACK received  Distant[%s]  MSD aldready sent[%s] default mode[%s]  (%s, %s)\n",
+                  (masterSlaveAck->decision.t ==  T_H245MasterSlaveDeterminationAck_decision_master)?"slave":"master" ,
+                  (call->masterSlaveState >= OO_MasterSlave_DetermineSent)?"true":"false",
+                  msd_mode2str[defMSDMode],
+                  call->callType, call->callToken);
+
+       if(call->masterSlaveState == OO_MasterSlave_AckSent)   
+       {   
+         if(masterSlaveAck->decision.t == T_H245MasterSlaveDeterminationAck_decision_master) {
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination ACK aldready sent - distant[slave] local[master] (%s, %s)\n", call->callType, call->callToken); 
+           call->masterSlaveState = OO_MasterSlave_Master;   
+         }else{
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination ACK aldready sent - distant[master] local[slave] (%s, %s)\n", call->callType, call->callToken); 
+           call->masterSlaveState = OO_MasterSlave_Slave;   
+           return OO_OK;   
+         }
+       }   
+
+       if(call->masterSlaveState == OO_MasterSlave_DetermineSent)   
+       {   
+         if(masterSlaveAck->decision.t ==  T_H245MasterSlaveDeterminationAck_decision_master)   
+         {   
+           ooSendMasterSlaveDeterminationAck(call, "slave");  
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination send ACK  - distant[slave] local[master] (%s, %s)\n", call->callType, call->callToken);
+           call->masterSlaveState =  OO_MasterSlave_Master;   
+           return OO_OK;   
+         }   
+         else   
+         {   
+           ooSendMasterSlaveDeterminationAck(call, "master");   
+           OOTRACEINFO3("[MSD] MasterSlaveDetermination send ACK  - distant[master] local[slave] (%s, %s)\n", call->callType, call->callToken);
+           call->masterSlaveState = OO_MasterSlave_Slave;   
+           return OO_OK;   
+         }   
+       }
+
+       //phv send first OLC if master mode      
+       if( call->localTermCapState == OO_LocalTermCapSetAckRecvd &&
+           call->remoteTermCapState == OO_RemoteTermCapSetAckSent && 
+           call->masterSlaveState ==  OO_MasterSlave_Master ) 
+       {
+         /*Since Cap exchange and MasterSlave Procedures are done */
+         OOTRACEAST(OOTRCLVLDBGA,"[MSD] MasterSlaveDetermination : Open Logical Channels[%s] (%s, %s) \n", 
+                    (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                    call->callType, call->callToken );
+         if(!call->logicalChans){
+           if(!gH323ep.h323Callbacks.openLogicalChannels)
+             ooOpenLogicalChannels(call);
+           else
+             gH323ep.h323Callbacks.openLogicalChannels(call);
+         }
+       }
+       else
+         OOTRACEAST(OOTRCLVLDBGA,"[MSD] MasterSlaveDetermination :Not opening logical channels now MSD[%s] localTermCapStateAck[%s] remoteTermCapState[%s] (%s, %s) \n",
+                    (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                    (call->localTermCapState == OO_LocalTermCapSetAckRecvd)?"true":"false" ,
+                    (call->remoteTermCapState == OO_RemoteTermCapSetAckSent)?"true":"false", 
+                    call->callType, call->callToken);
+       break;
+     default:
+       OOTRACEWARN3("Warn:Unhandled Master Slave message received - %s - "
+                    "%s\n", call->callType, call->callToken);
    }
    return OO_OK;      
 }
 
-int ooSendMasterSlaveDetermination(OOH323CallData *call)
+#ifdef  CONFIG_CUSTOM
+int ooH245SetSendMSD(int value)
+{
+
+  OOTRACEAST(OOTRCLVLDBGA,"ooH245SetSendMSD :"
+             "[%s] \n", 
+             (value)?"true":"false" );
+  SendMSD=value;
+  return SendMSD ;
+}
+#endif
+
+void ooH245setMsdMode( char* defaultMode )
+{
+  int Status = TRUE ;
+  if ( strncmp(msd_mode2str[MSD_MODE_MASTER], defaultMode , STR_MSD_MODE_SIZE ) == 0 )
+  {
+    defMSDMode=MSD_MODE_MASTER ;
+  }
+  else if ( strncmp(msd_mode2str[MSD_MODE_SLAVE], defaultMode , STR_MSD_MODE_SIZE ) == 0 )
+  {
+    defMSDMode=MSD_MODE_SLAVE ;
+  }
+  else
+  {
+    defMSDMode=MSD_MODE_UNDEF ; 
+  }
+  OOTRACEAST(OOTRCLVLDBGA,"Default MSD mode  :[%s] \n",msd_mode2str[defMSDMode]  );
+}
+
+int ooH245SetCheckOLC(int value)
+{
+
+  OOTRACEAST(OOTRCLVLDBGA,"ooH245SetCheckOLC"
+             "[%s] \n", 
+             (value)?"true":"false" );
+  CheckOLC=value;
+  return CheckOLC ;
+}
+
+int ooH245GetCheckOLC()
+{
+
+  OOTRACEAST(OOTRCLVLDBGA,"ooH245GetCheckOLC"
+             "[%s] \n", 
+             (CheckOLC)?"true":"false" );
+  return CheckOLC ;
+}
+#ifdef  CONFIG_CUSTOM
+int ooH245SetWaitOLC(int value)
+{
+
+  OOTRACEAST(OOTRCLVLDBGA,"ooH245SetWaitOLC:"
+             "[%s] \n", 
+             (value)?"true":"false" );
+  WaitOLC=value;
+  return WaitOLC ;
+}
+
+
+#endif
+int ooSendMasterSlaveDetermination(OOH323CallData *call, int force )
 {
    int ret;
    H245Message* ph245msg=NULL;
    H245RequestMessage *request;
    OOCTXT *pctxt=&gH323ep.msgctxt;
    H245MasterSlaveDetermination* pMasterSlave;
-
+#ifdef  CONFIG_CUSTOM
+   if ( !SendMSD && !force )
+   {
+      OOTRACEAST(OOTRCLVLDBGA,"MasterSlave determination configuration : not send MSD (%s, %s)\n",
+                   call->callType, call->callToken);
+      return OO_OK;     
+   }
+#endif
    /* Check whether Master Slave Determination already in progress */
    if(call->masterSlaveState != OO_MasterSlave_Idle)
    {
@@ -845,8 +1055,7 @@ int ooSendMasterSlaveDetermination(OOH323CallData *call)
    pMasterSlave = request->u.masterSlaveDetermination;
    memset(pMasterSlave, 0, sizeof(H245MasterSlaveDetermination));   
    pMasterSlave->terminalType = gH323ep.termType; 
-   pMasterSlave->statusDeterminationNumber = 
-                       ooGenerateStatusDeterminationNumber();
+   pMasterSlave->statusDeterminationNumber = ooGenerateStatusDeterminationNumber();
    call->statusDeterminationNumber = pMasterSlave->statusDeterminationNumber;
 
    OOTRACEDBGA3("Built MasterSlave Determination (%s, %s)\n", call->callType,
@@ -910,6 +1119,78 @@ int ooSendMasterSlaveDeterminationAck(OOH323CallData* call,
    }
    
    ooFreeH245Message(call, ph245msg);
+   return ret;
+}
+
+int ooSendFlowControlAck(OOH323CallData* call)
+{
+    int ret;
+   H245CommandMessage * command;
+   OOCTXT *pctxt;
+   H245Message *ph245msg=NULL;
+#if 1
+   ret = ooCreateH245Message(&ph245msg, 
+                      T_H245MultimediaSystemControlMessage_command);
+   if(ret != OO_OK)
+   {
+      OOTRACEERR3("Error: H245 message creation failed for - Send Flow Control Ack "
+                  "Command (%s, %s)\n", call->callType, call->callToken);
+      return OO_FAILED;
+   }
+   ph245msg->msgType = OOflowControlCommand ;
+
+   command = ph245msg->h245Msg.u.command;
+   pctxt = &gH323ep.msgctxt;
+   memset(command, 0, sizeof(H245CommandMessage));
+   command->t = T_H245CommandMessage_flowControlCommand ;
+   command->u.flowControlCommand = (H245FlowControlCommand*) ASN1MALLOC(pctxt,
+                                  sizeof(H245FlowControlCommand ));
+   memset(command->u.flowControlCommand, 0, sizeof(H245FlowControlCommand));
+
+   command->u.flowControlCommand->scope.t = (ASN1UINT)T_H245FlowControlCommand_scope_logicalChannelNumber ;
+   ooH323EpCapability* EpCap = NULL ; 
+   command->u.flowControlCommand->scope.u.logicalChannelNumber = ooGetVideoLogicalChannel(call , &EpCap );
+   /* todo get ooH323EpCapability->cap */
+   /* OOH264CapParams *params=epCap->params ou OOCapParams *params=epCap->params ou OOH263CapParams *params=epCap->params */
+   /* and get bitrate */
+   command->u.flowControlCommand->restriction.t = (ASN1UINT)T_H245FlowControlCommand_restriction_noRestriction ; 
+
+/*
+  typedef struct EXTERN H245FlowControlCommand {
+  H245FlowControlCommand_scope scope;
+  H245FlowControlCommand_restriction restriction;
+  } H245FlowControlCommand;
+  
+  typedef struct EXTERN H245FlowControlCommand_scope {
+  int t;
+  union {
+  // t = 1 
+  H245LogicalChannelNumber logicalChannelNumber;
+  // t = 2 
+  ASN1USINT resourceID;
+  // t = 3 
+  } u;
+  } H245FlowControlCommand_scope;
+
+  typedef struct EXTERN H245FlowControlCommand_restriction {
+  int t;
+  union {
+  // t = 1 
+  ASN1UINT maximumBitRate;
+  // t = 2 
+  } u;
+  } H245FlowControlCommand_restriction;
+*/
+   OOTRACEDBGA3("Built FlowControl Command (%s, %s)\n", call->callType,
+                call->callToken);
+   ret = ooSendH245Msg(call, ph245msg);
+   if(ret != OO_OK)
+   {
+      OOTRACEERR3("Error:Failed to enqueue FlowControl message to outbound "
+                  "queue.(%s, %s)\n", call->callType, call->callToken);
+   }
+   ooFreeH245Message(call, ph245msg);
+#endif
    return ret;
 }
 
@@ -1015,7 +1296,7 @@ int ooHandleMasterSlaveReject
       OOTRACEDBGA3("Retrying MasterSlaveDetermination. (%s, %s)\n", 
                     call->callType, call->callToken);
       call->masterSlaveState = OO_MasterSlave_Idle;
-      ooSendMasterSlaveDetermination(call);
+      ooSendMasterSlaveDetermination(call,TRUE);
       return OO_OK;
    }
    OOTRACEERR3("Error:Failed to complete MasterSlaveDetermination - "
@@ -1030,108 +1311,101 @@ int ooHandleMasterSlaveReject
 
 
 int ooHandleOpenLogicalChannel(OOH323CallData* call, 
-                                 H245OpenLogicalChannel *olc)
+                               H245OpenLogicalChannel *olc)
 {
-
-   H245OpenLogicalChannel_forwardLogicalChannelParameters *flcp =
-    &(olc->forwardLogicalChannelParameters);
+  H245OpenLogicalChannel_forwardLogicalChannelParameters *flcp = &(olc->forwardLogicalChannelParameters);
    
-#if 0
-   if(!call->logicalChans)
-      ooOpenLogicalChannels(call);
-#endif
 
-   /* Check whether channel type is supported. Only supported channel 
-      type for now is g711ulaw audio channel.
-   */
-   switch(flcp->dataType.t)
-   {
-   case T_H245DataType_nonStandard:
+  /* Check whether channel type is supported. Only supported channel 
+     type for now is g711ulaw audio channel.
+  */
+  switch(flcp->dataType.t)
+  {
+    case T_H245DataType_nonStandard:
       OOTRACEWARN3("Warn:Media channel data type "
                    "'T_H245DataType_nonStandard' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_nullData:
+    case T_H245DataType_nullData:
       OOTRACEWARN3("Warn:Media channel data type "
                    "'T_H245DataType_nullData' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_videoData:
-   case T_H245DataType_audioData:
+    case T_H245DataType_videoData:
+    case T_H245DataType_audioData:
       ooHandleOpenLogicalChannel_helper(call, olc);
       break;
-   case T_H245DataType_data:
+    case T_H245DataType_data:
       OOTRACEWARN3("Warn:Media channel data type "
                    "'T_H245DataType_data' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_encryptionData:
+    case T_H245DataType_encryptionData:
       OOTRACEWARN3("Warn:Media channel data type "
                    "'T_H245DataType_encryptionData' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_h235Control:
+    case T_H245DataType_h235Control:
       OOTRACEWARN3("Warn:Media channel data type "
                    "'T_H245DataType_h235Control' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_h235Media:
+    case T_H245DataType_h235Media:
       OOTRACEWARN3("Warn:Media channel data type "
                    "'T_H245DataType_h235Media' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_multiplexedStream:
+    case T_H245DataType_multiplexedStream:
       OOTRACEWARN3("Warn:Media channel data type "
-                  "'T_H245DataType_multiplexedStream' not supported(%s, %s)\n",
+                   "'T_H245DataType_multiplexedStream' not supported(%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_redundancyEncoding:
+    case T_H245DataType_redundancyEncoding:
       OOTRACEWARN3("Warn:Media channel data type "
-                "'T_H245DataType_redundancyEncoding' not supported (%s, %s)\n",
-                  call->callType, call->callToken);
-      ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
-      break;
-   case T_H245DataType_multiplePayloadStream:
-      OOTRACEWARN3("Warn:Media channel data type "
-             "'T_H245DataType_multiplePayloadStream' not supported (%s, %s)\n",
+                   "'T_H245DataType_redundancyEncoding' not supported (%s, %s)\n",
                    call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   case T_H245DataType_fec:
+    case T_H245DataType_multiplePayloadStream:
+      OOTRACEWARN3("Warn:Media channel data type "
+                   "'T_H245DataType_multiplePayloadStream' not supported (%s, %s)\n",
+                   call->callType, call->callToken);
+      ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+      break;
+    case T_H245DataType_fec:
       OOTRACEWARN3("Warn:Media channel data type 'T_H245DataType_fec' not "
                    "supported (%s, %s)\n", call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       break;
-   default:
+    default:
       OOTRACEERR3("ERROR:Unknown media channel data type (%s, %s)\n", 
-                   call->callType, call->callToken);
+                  call->callType, call->callToken);
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
-             T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
-   }
-   
-   return OO_OK;
+                                     T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
+  }
+  return OO_OK;
 }       
 
 /*TODO: Need to clean logical channel in case of failure after creating one */
 int ooHandleOpenLogicalChannel_helper(OOH323CallData *call, 
-                                    H245OpenLogicalChannel*olc)
+                                      H245OpenLogicalChannel*olc)
 {
    int ret=0;
    H245Message *ph245msg=NULL;
@@ -1163,6 +1437,7 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
    {
       OOTRACEERR3("ERROR:HandleOpenLogicalChannel_helper - capability not "
                   "supported (%s, %s)\n", call->callType, call->callToken);
+
       ooSendOpenLogicalChannelReject(call, olc->forwardLogicalChannelNumber,
           T_H245OpenLogicalChannelReject_cause_dataTypeNotSupported);
       return OO_FAILED;
@@ -1179,6 +1454,8 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
       epCap = NULL;
       return OO_FAILED;
    }
+
+   SetRemoteCapChoice( call , epCap );
 
    ph245msg->msgType = OOOpenLogicalChannelAck;
    ph245msg->logicalChannelNo = olc->forwardLogicalChannelNumber;
@@ -1233,6 +1510,11 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
                   "(%s, %s)\n", call->callType, call->callToken);
       return OO_FAILED;
    }
+   if ( h2250lcp->m.dynamicRTPPayloadTypePresent )
+   {
+      pLogicalChannel->rtpPayloadType = h2250lcp->dynamicRTPPayloadType;
+      OOTRACEERR2("Got dynamic RTP payload type %d.\n", pLogicalChannel->rtpPayloadType );
+   }
    ooSocketConvertIpToNwAddr(call->localIP, iPAddress->network.data);
 
    iPAddress->network.numocts = 4;
@@ -1268,7 +1550,6 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
    }
    ooFreeH245Message(call, ph245msg);
 
-
    if(epCap->startReceiveChannel)
    {
       epCap->startReceiveChannel(call, pLogicalChannel);      
@@ -1283,6 +1564,53 @@ int ooHandleOpenLogicalChannel_helper(OOH323CallData *call,
       return OO_FAILED;
    }
    pLogicalChannel->state = OO_LOGICALCHAN_ESTABLISHED;
+   // Send olc on slave mode 
+   if (  call->masterSlaveState == OO_MasterSlave_Slave ){
+       if (  epCap->cap < OO_CAP_VIDEO_BASE ){
+         OOTRACEAST(OOTRCLVLDBGA,"ooHandleOpenLogicalChannel :  Open Audio Logical Channels[%s] (%s, %s) \n", 
+                    (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                    call->callType, call->callToken );
+ 
+         ret = ooOpenLogicalChannel(call, OO_CAP_TYPE_AUDIO);
+         if(ret != OO_OK)
+         {
+           OOTRACEERR3("ERROR:ooHandleOpenLogicalChannel Failed to open audio channel. Clearing call.(%s, %s)\n", call->callType, call->callToken);
+           if(call->callState < OO_CALL_CLEAR)
+           {
+             call->callEndReason = OO_REASON_LOCAL_CLEARED;
+             call->callState = OO_CALL_CLEAR;
+           }
+           return ret;
+         }
+       }else{
+       OOTRACEAST(OOTRCLVLDBGA,"ooHandleOpenLogicalChannel :  Open Video Logical Channels[%s] (%s, %s) \n", 
+                    (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                    call->callType, call->callToken );
+ 
+         ret = ooOpenLogicalChannel(call, OO_CAP_TYPE_VIDEO);
+         if(ret != OO_OK)
+         {
+           OOTRACEERR3("ERROR:ooHandleOpenLogicalChannel Failed to open video channel. Clearing call."
+                       "(%s, %s)\n", call->callType, call->callToken);
+           if(call->callState < OO_CALL_CLEAR)
+           {
+             call->callEndReason = OO_REASON_LOCAL_CLEARED;
+             call->callState = OO_CALL_CLEAR;
+           }
+           return ret;
+         }
+       }
+   }else{
+     if(!call->logicalChans){
+       OOTRACEAST(OOTRCLVLDBGA,"ooHandleOpenLogicalChannel : master mode but olc not send : Open Logical Channels[%s] (%s, %s) \n", 
+                  (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                  call->callType, call->callToken );
+      if(!gH323ep.h323Callbacks.openLogicalChannels)
+        ooOpenLogicalChannels(call);
+      else
+        gH323ep.h323Callbacks.openLogicalChannels(call);
+     }
+   }
    return ret;
 }
 
@@ -1444,12 +1772,23 @@ int ooOnReceivedOpenLogicalChannelAck(OOH323CallData *call,
    pLogicalChannel->remoteMediaPort = iPAddress->tsapIdentifier;
    pLogicalChannel->remoteMediaControlPort = iPAddress1->tsapIdentifier;
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] RECV <-- OLCAck:[%d] %s:%d <=[ %s ] =>%s:%d "
+              " (%s, %s)\n", olcAck->forwardLogicalChannelNumber,
+              (pLogicalChannel->localIP)?pLogicalChannel->localIP:"Null", 
+              pLogicalChannel->localRtpPort,
+              ooGetCapTypeText(pLogicalChannel->chanCap->cap),
+              (pLogicalChannel->remoteIP)?pLogicalChannel->remoteIP:"Null" ,
+              pLogicalChannel->remoteMediaPort, 
+              call->callType, call->callToken);
+
    if(pLogicalChannel->chanCap->startTransmitChannel)
    {
       pLogicalChannel->chanCap->startTransmitChannel(call, pLogicalChannel);
       OOTRACEINFO4("TransmitLogical Channel of type %s started (%s, %s)\n", 
                    ooGetCapTypeText(pLogicalChannel->chanCap->cap),
                    call->callType, call->callToken);
+      // send if i received 
+      // ooSendH245MIlogicalchannelActive(call,olcAck->forwardLogicalChannelNumber);
    }
    else{
       OOTRACEERR3("ERROR:No callback registered for starting transmit channel "
@@ -1656,12 +1995,30 @@ int ooHandleH245Command(OOH323CallData *call,
                       call->callToken);
          break;
       case T_H245CommandMessage_flowControlCommand:
-         OOTRACEWARN3("Warning: Flow control command received - Not handled "
+         OOTRACEWARN3("Warning: Flow control command received "
                       "(%s, %s)\n", call->callType, call->callToken);
+         ooSendFlowControlAck( call);
          break;
+
+     case T_H245CommandMessage_miscellaneousCommand:
+       if ( command->u.miscellaneousCommand->type.t == 
+            T_H245MiscellaneousCommand_type_videoFastUpdatePicture)
+       {
+         OOTRACEWARN4("Warning: Video Fast Update received [%x] "
+                      "(%s, %s)\n", gH323ep.h323Callbacks.onReceivedMiscellaneous,
+                      call->callType, call->callToken );
+         if(gH323ep.h323Callbacks.onReceivedMiscellaneous)
+           gH323ep.h323Callbacks.onReceivedMiscellaneous(call,OO_MISC_CMD_VIDUPDATE,NULL);
+       }
+       else
+       {
+         OOTRACEWARN4("Warning: Unhandled H245 command message received %d "
+                      "(%s, %s)\n", command->t,call->callType, call->callToken);         
+       }    
+       break;     
       default:
-         OOTRACEWARN3("Warning: Unhandled H245 command message received "
-                      "(%s, %s)\n", call->callType, call->callToken);
+         OOTRACEWARN4("Warning: Unhandled H245 command message received %d "
+                      "(%s, %s)\n", command->t,call->callType, call->callToken);
    }
    OOTRACEDBGC3("Handling H.245 command message done. (%s, %s)\n", 
                  call->callType, call->callToken);   
@@ -1671,30 +2028,34 @@ int ooHandleH245Command(OOH323CallData *call,
 
 int ooOnReceivedTerminalCapabilitySetAck(OOH323CallData* call)
 {
-   call->localTermCapState = OO_LocalTermCapSetAckRecvd;
-   if(call->remoteTermCapState != OO_RemoteTermCapSetAckSent)
-      return OO_OK;
-   
-   if(call->masterSlaveState == OO_MasterSlave_Master ||
-       call->masterSlaveState == OO_MasterSlave_Slave)
-   {
-      if(gH323ep.h323Callbacks.openLogicalChannels)
-         gH323ep.h323Callbacks.openLogicalChannels(call);
-      else{
-         if(!call->logicalChans)
-            ooOpenLogicalChannels(call);
-      }
-#if 0
-      if(!call->logicalChans){
-         if(!gH323ep.h323Callbacks.openLogicalChannels)
-            ooOpenLogicalChannels(call);
-         else
-            gH323ep.h323Callbacks.openLogicalChannels(call);
-      }
-#endif
-   }
+  call->localTermCapState = OO_LocalTermCapSetAckRecvd;
+
+  if(call->remoteTermCapState != OO_RemoteTermCapSetAckSent)
+    return OO_OK;
+
+  if( call->localTermCapState == OO_LocalTermCapSetAckRecvd &&
+      call->remoteTermCapState == OO_RemoteTermCapSetAckSent && 
+      call->masterSlaveState ==  OO_MasterSlave_Master) 
+  {
+    /*Since Cap exchange and MasterSlave Procedures are done */
+    OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedTerminalCapabilitySetAck : Open Logical Channels[%s] (%s, %s) \n", 
+               (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+               call->callType, call->callToken );
+    if(!call->logicalChans){
+      if(!gH323ep.h323Callbacks.openLogicalChannels)
+        ooOpenLogicalChannels(call);
+      else
+        gH323ep.h323Callbacks.openLogicalChannels(call);
+    }
+  }
+  else
+    OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedTerminalCapabilitySetAck Not opening logical channels now MSD[%s] localTermCapStateAck[%s] remoteTermCapState[%s] (%s, %s) \n",
+                 (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                 (call->localTermCapState == OO_LocalTermCapSetAckRecvd)?"true":"false" ,
+                 (call->remoteTermCapState == OO_RemoteTermCapSetAckSent)?"true":"false", 
+                 call->callType, call->callToken);
       
-   return OO_OK;
+  return OO_OK;
 }
 
 int ooCloseAllLogicalChannels(OOH323CallData *call)
@@ -2119,6 +2480,8 @@ int ooHandleH245Message(OOH323CallData *call, H245Message * pmsg)
    OOTRACEDBGC3("Handling H245 message. (%s, %s)\n", call->callType, 
                  call->callToken);
    
+   ooTraceH245Msg(call , NULL , pmsg );  
+
    switch(pH245->h245Msg.t)
    {
       /* H.245 Request message is received */
@@ -2126,7 +2489,7 @@ int ooHandleH245Message(OOH323CallData *call, H245Message * pmsg)
          request = pH245->h245Msg.u.request;
          switch(request->t)
          {
-            case T_H245RequestMessage_terminalCapabilitySet:
+           case T_H245RequestMessage_terminalCapabilitySet:
                /* If session isn't marked active yet, do it. possible in case of 
                   tunneling */
                if(call->h245SessionState == OO_H245SESSION_IDLE)
@@ -2159,7 +2522,21 @@ int ooHandleH245Message(OOH323CallData *call, H245Message * pmsg)
                ooOnReceivedRequestChannelClose(call, 
                                                request->u.requestChannelClose);
                break;
+
+           case T_H245RequestMessage_roundTripDelayRequest:
+               OOTRACEINFO4("Received Request roundTripDelayRequest - %d (%s, %s)\n",
+                  request->u.roundTripDelayRequest->sequenceNumber, 
+                  call->callType, call->callToken);
+               ooOnReceivedRequestRoundTripDelayRequest(call, request->u.roundTripDelayRequest->sequenceNumber);
+           case T_H245RequestMessage_conferenceRequest:
+               OOTRACEINFO4("Received Request T_H245RequestMessage_conferenceRequest %d (%s, %s)\n",
+                  request->u.conferenceRequest->t, 
+                  call->callType, call->callToken);
+               ooOnReceivedConferenceRequest(call, request->u.roundTripDelayRequest->sequenceNumber);
+               break ;
             default:
+              OOTRACEERR4("[H323/H245] Error:Ignore request %d .(%s, %s)\n",
+                          request->t ,call->callType, call->callToken);
                ;
          } /* End of Request Message */
          break;
@@ -2367,6 +2744,8 @@ int ooHandleH245Message(OOH323CallData *call, H245Message * pmsg)
                                            response->u.requestChannelCloseReject);
                break;
             default:
+              OOTRACEERR4("[H323/H245] Error:Ignore respons %d .(%s, %s)\n",
+                          response->t ,call->callType, call->callToken);
                ;
          }
          break;
@@ -2383,9 +2762,11 @@ int ooHandleH245Message(OOH323CallData *call, H245Message * pmsg)
             case T_H245IndicationMessage_userInput:
                ooOnReceivedUserInputIndication(call, indication->u.userInput);
                break;
-            default:
-               OOTRACEWARN3("Unhandled indication message received.(%s, %s)\n",
-                             call->callType, call->callToken);
+           case T_H245IndicationMessage_miscellaneousIndication:
+             ooSendH245MIlogicalchannelActive(call, indication->u.miscellaneousIndication->logicalChannelNumber);
+             break ;
+           default:
+             OOTRACEWARN3("Unhandled indication message received.(%s, %s)\n",call->callType, call->callToken);
          }
          break;
       default:
@@ -2425,6 +2806,9 @@ int ooOnReceivedTerminalCapabilitySet(OOH323CallData *call, H245Message *pmsg)
    H245TerminalCapabilitySet *tcs=NULL;
    DListNode *pNode=NULL;
    H245CapabilityTableEntry *capEntry = NULL;
+   
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CODEC] ooOnReceivedTerminalCapabilitySet"
+              " (%s, %s)\n", call->callType, call->callToken);
 
    tcs =  pmsg->h245Msg.u.request->u.terminalCapabilitySet;
    if(call->remoteTermCapSeqNo >= tcs->sequenceNumber)
@@ -2496,28 +2880,36 @@ int ooOnReceivedTerminalCapabilitySet(OOH323CallData *call, H245Message *pmsg)
       call->localTermCapState  != OO_LocalTermCapSetAckRecvd)
       return OO_OK;
 
-   /* Check MasterSlave procedure has finished */
-   if(call->masterSlaveState != OO_MasterSlave_Master &&
-      call->masterSlaveState != OO_MasterSlave_Slave)
+   if(call->masterSlaveState == OO_MasterSlave_Idle)
+   {
+      OOTRACEINFO3("ooOnReceivedTerminalCapabilitySet:MasterSlave not determinated (%s, %s)\n",
+                   call->callType, call->callToken);
+      ooSendMasterSlaveDetermination(call,TRUE);
       return OO_OK;
+   }
 
-   /* As both MasterSlave and TerminalCapabilitySet procedures have finished,
-      OpenLogicalChannels */
- 
-   if(gH323ep.h323Callbacks.openLogicalChannels)
-      gH323ep.h323Callbacks.openLogicalChannels(call);
-   else{
-      if(!call->logicalChans)
-         ooOpenLogicalChannels(call);
-   }
-#if 0
-   if(!call->logicalChans){
+  if( call->localTermCapState == OO_LocalTermCapSetAckRecvd &&
+      call->remoteTermCapState == OO_RemoteTermCapSetAckSent && 
+      call->masterSlaveState ==  OO_MasterSlave_Master) 
+  {
+    /*Since Cap exchange and MasterSlave Procedures are done */
+    OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedTerminalCapabilitySet : Open Logical Channels[%s] (%s, %s) \n", 
+               (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+               call->callType, call->callToken );
+    if(!call->logicalChans){
       if(!gH323ep.h323Callbacks.openLogicalChannels)
-         ret = ooOpenLogicalChannels(call);
+        ooOpenLogicalChannels(call);
       else
-         gH323ep.h323Callbacks.openLogicalChannels(call);
-   }
-#endif
+        gH323ep.h323Callbacks.openLogicalChannels(call);
+    }
+  }
+  else
+    OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedTerminalCapabilitySet Not opening logical channels now MSD[%s] localTermCapStateAck[%s] remoteTermCapState[%s] (%s, %s) \n",
+                 (call->masterSlaveState == OO_MasterSlave_Master)?"master":"slave",
+                 (call->localTermCapState == OO_LocalTermCapSetAckRecvd)?"true":"false" ,
+                 (call->remoteTermCapState == OO_RemoteTermCapSetAckSent)?"true":"false", 
+                 call->callType, call->callToken);
+
    return OO_OK;
 }
 
@@ -2778,11 +3170,324 @@ int ooSendH245UserInputIndication_signal
 }
 
 
+
+/* IVeS */
+int ooSendH245VideoUpdateRequest(OOH323CallData *call, int firstgob, int nbgobs)
+{
+  int ret = 0;
+  H245CommandMessage* cmd=NULL;
+  H245Message *ph245msg=NULL;
+  OOCTXT *pctxt=&gH323ep.msgctxt;
+  OOLogicalChannel * pChannel = NULL;
+  pChannel = call->logicalChans;
+  while(pChannel)
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"ooSendH245VideoUpdateRequest :have OLC video received  (%s, %s)"
+               "find  on logical chan %d [%s] %s.\n",
+               call->callType, call->callToken,pChannel->sessionID,
+               pChannel->dir, ooGetCapTypeText(pChannel->chanCap->cap) );
+
+    if ( pChannel->type == OO_CAP_TYPE_VIDEO   && strcmp( pChannel->dir, "receive") == 0 )
+    {
+      OOTRACEDBGA4 ("ooSendH245VideoUpdateRequest :have OLC video received  (%s, %s)"
+                    " on logical chan %d.\n",
+                    call->callType, call->callToken,pChannel->sessionID );
+
+      ret = ooCreateH245Message
+        (&ph245msg, T_H245MultimediaSystemControlMessage_command);
+
+      if (ret != OO_OK) {
+        OOTRACEERR3("Error:H245 message creation failed for - H245MiscellaneousCommand"
+                    "(%s, %s)\n",call->callType, call->callToken);
+        return OO_FAILED;
+      }
+      ph245msg->msgType = OOMiscellaneousCommand; 
+      cmd = ph245msg->h245Msg.u.command;
+      cmd->t =  T_H245CommandMessage_miscellaneousCommand;
+
+      cmd->u.miscellaneousCommand =
+        (H245MiscellaneousCommand*) memAllocZ (pctxt, sizeof(H245MiscellaneousCommand));
+
+      if( !cmd->u.miscellaneousCommand )
+      {
+        OOTRACEERR3("Error: Memory - ooSendH245VideoUpdateRequest "
+                    " (%s, %s)\n", call->callType, call->callToken);
+        ooFreeH245Message(call, ph245msg);
+        return OO_FAILED;
+      }
+
+      cmd->u.miscellaneousCommand->logicalChannelNumber  = pChannel->sessionID;
+      cmd->u.miscellaneousCommand->type.t = T_H245MiscellaneousCommand_type_videoFastUpdatePicture;
+      /* IVeS - a ameliorer */
+      cmd->u.miscellaneousCommand->type.u.videoFastUpdateGOB = NULL ;
+      OOTRACEDBGA4 ("Built VIdeoUpdateRquest (%s, %s) on logical chan %d.\n",
+                    call->callType, call->callToken, cmd->u.miscellaneousCommand->logicalChannelNumber);   
+
+      ret = ooSendH245Msg (call, ph245msg);
+
+      if (ret != OO_OK) {
+        OOTRACEERR3
+          ("Error:Failed to enqueue VideoUpdateRequest "
+           "message to outbound queue.(%s, %s)\n", call->callType,
+           call->callToken);
+
+      }
+      ooFreeH245Message (call, ph245msg);
+    }
+    pChannel = pChannel->next;
+  }
+}
+
+int ooSendH245MIlogicalchannelActive(OOH323CallData *call, H245LogicalChannelNumber LogicalChannelNumber)
+{
+  int ret = 0;
+  H245IndicationMessage* indication=NULL;
+  H245Message *ph245msg=NULL;
+  OOCTXT *pctxt=&gH323ep.msgctxt;
+  OOLogicalChannel * pChannel = NULL;
+  pChannel = call->logicalChans;
+#if 0
+  while(pChannel)
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"ooSendH245MIlogicalchannelActive :  (%s, %s)"
+               "find  on logical chan %d [%s] %s.\n",
+               call->callType, call->callToken,pChannel->sessionID,
+               pChannel->dir, ooGetCapTypeText(pChannel->chanCap->cap) );
+
+    if ( strcmp( pChannel->dir, "receive") == 0 )
+    {
+      OOTRACEDBGA4 ("ooSendH245MIlogicalchannelActive :have OLC received  (%s, %s)"
+                    " on logical chan %d.\n",
+                    call->callType, call->callToken,pChannel->sessionID );
+
+      ret = ooCreateH245Message(&ph245msg, T_H245MultimediaSystemControlMessage_indication);
+
+      if (ret != OO_OK) {
+        OOTRACEERR3("ooSendH245MIlogicalchannelActive Error:H245 message creation failed for - H245miscellaneousIndication "
+                    "(%s, %s)\n",call->callType, call->callToken);
+        return OO_FAILED;
+      }
+      ph245msg->msgType = OOMiscellaneousIndication; 
+      indication = ph245msg->h245Msg.u.indication;
+      indication->t = T_H245IndicationMessage_miscellaneousIndication;
+      indication->u.miscellaneousIndication =(H245MiscellaneousIndication*)memAllocZ (pctxt, sizeof(H245MiscellaneousIndication));
+
+   
+      if( !indication->u.miscellaneousIndication )
+      {
+        OOTRACEERR3("ooSendH245MIlogicalchannelActive Error: Memory -  "
+                    " (%s, %s)\n", call->callType, call->callToken);
+        ooFreeH245Message(call, ph245msg);
+        return OO_FAILED;
+      }
+
+      indication->u.miscellaneousIndication->logicalChannelNumber  = pChannel->sessionID;
+      indication->u.miscellaneousIndication->type.t = T_H245MiscellaneousIndication_type_logicalChannelActive;
+      OOTRACEDBGA4 ("ooSendH245MIlogicalchannelActive Built logicalchannelActive (%s, %s) on logical chan %d.\n",
+                    call->callType, call->callToken, indication->u.miscellaneousIndication->logicalChannelNumber);   
+
+      ret = ooSendH245Msg (call, ph245msg);
+
+      if (ret != OO_OK) {
+        OOTRACEERR3
+          ("ooSendH245MIlogicalchannelActive Error:Failed to enqueue logicalchannelActive "
+           "message to outbound queue.(%s, %s)\n", call->callType,
+           call->callToken);
+
+      }
+      ooFreeH245Message (call, ph245msg);
+    }
+    pChannel = pChannel->next;
+  }
+#else
+  OOTRACEAST(OOTRCLVLDBGA,"ooSendH245MIlogicalchannelActive :logical chan %d  (%s, %s).\n",LogicalChannelNumber,
+                call->callType, call->callToken );
+  ret = ooCreateH245Message(&ph245msg, T_H245MultimediaSystemControlMessage_indication);
+
+  if (ret != OO_OK) {
+    OOTRACEERR3("ooSendH245MIlogicalchannelActive Error:H245 message creation failed for - H245miscellaneousIndication "
+                "(%s, %s)\n",call->callType, call->callToken);
+    return OO_FAILED;
+  }
+  ph245msg->msgType = OOMiscellaneousIndication; 
+  indication = ph245msg->h245Msg.u.indication;
+  indication->t = T_H245IndicationMessage_miscellaneousIndication;
+  indication->u.miscellaneousIndication =(H245MiscellaneousIndication*)memAllocZ (pctxt, sizeof(H245MiscellaneousIndication));
+
+   
+  if( !indication->u.miscellaneousIndication )
+  {
+    OOTRACEERR3("ooSendH245MIlogicalchannelActive Error: Memory -  "
+                " (%s, %s)\n", call->callType, call->callToken);
+    ooFreeH245Message(call, ph245msg);
+    return OO_FAILED;
+  }
+
+  indication->u.miscellaneousIndication->logicalChannelNumber  = LogicalChannelNumber;
+  indication->u.miscellaneousIndication->type.t = T_H245MiscellaneousIndication_type_logicalChannelActive;
+  OOTRACEAST(OOTRCLVLDBGA,"ooSendH245MIlogicalchannelActive Built logicalchannelActive (%s, %s) on logical chan %d.\n",
+                call->callType, call->callToken, indication->u.miscellaneousIndication->logicalChannelNumber);   
+
+  ret = ooSendH245Msg (call, ph245msg);
+
+  if (ret != OO_OK) {
+    OOTRACEERR3
+      ("ooSendH245MIlogicalchannelActive Error:Failed to enqueue logicalchannelActive "
+       "message to outbound queue.(%s, %s)\n", call->callType,
+       call->callToken);
+
+  }
+  ooFreeH245Message (call, ph245msg);
+#endif
+}
+
+int ooOnReceivedRequestRoundTripDelayRequest(OOH323CallData *call, H245SequenceNumber sequenceNumber)
+{
+  int ret = 0;
+  H245ResponseMessage *response = NULL;
+  H245Message *ph245msg=NULL;
+  OOCTXT *pctxt=&gH323ep.msgctxt;
+
+  OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedRequestRoundTripDelayRequest %d  (%s, %s)\n",
+             sequenceNumber,call->callType, call->callToken) ;
+
+  ret = ooCreateH245Message
+    (&ph245msg, T_H245MultimediaSystemControlMessage_response);
+
+   if(ret != OO_OK)
+   {
+      OOTRACEERR3("ERROR:Memory allocation for RoundTripDelayRespons message "
+                  "failed (%s, %s)\n", call->callType, call->callToken);
+      return OO_FAILED;
+   }
+
+   ph245msg->msgType = OORoundTripDelayRespons; 
+   response = ph245msg->h245Msg.u.response;
+   memset(response, 0, sizeof(H245ResponseMessage));
+   response->t = T_H245ResponseMessage_roundTripDelayResponse ;
+   response->u.roundTripDelayResponse = (H245RoundTripDelayResponse*)
+                   ASN1MALLOC(pctxt, sizeof(H245RoundTripDelayResponse));
+   memset(response->u.roundTripDelayResponse, 0, sizeof(H245RoundTripDelayResponse));
+   response->u.roundTripDelayResponse->sequenceNumber = sequenceNumber ;
+
+  ret = ooSendH245Msg(call, ph245msg);
+   if(ret != OO_OK)
+   {
+      OOTRACEERR3("Error:Failed to enqueue RoundTripDelayRespons message"
+                  " to outbound queue. (%s, %s)\n", call->callType, 
+                  call->callToken);
+   }
+   
+   ooFreeH245Message(call, ph245msg);
+   return ret;
+}
+
+int ooOnReceivedConferenceRequest(OOH323CallData *call, int request)
+{
+  int ret = 0;
+  H245ResponseMessage *response = NULL;
+  H245Message *ph245msg=NULL;
+  OOCTXT *pctxt=&gH323ep.msgctxt;
+  int send = FALSE ;
+
+  OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedConferenceRequest %d  (%s, %s)\n",
+             request,call->callType, call->callToken) ;
+
+  ret = ooCreateH245Message
+    (&ph245msg, T_H245MultimediaSystemControlMessage_response);
+
+   if(ret != OO_OK)
+   {
+      OOTRACEERR3("ERROR:Memory allocation for ConferenceRespons message "
+                  "failed (%s, %s)\n", call->callType, call->callToken);
+      return OO_FAILED;
+   }
+
+   ph245msg->msgType = OOConferenceRequestRespons; 
+   response = ph245msg->h245Msg.u.response;
+   memset(response, 0, sizeof(H245ResponseMessage));
+   response->t = T_H245ResponseMessage_conferenceResponse ;
+   response->u.conferenceResponse = (H245ConferenceResponse*)ASN1MALLOC(pctxt, sizeof(H245ConferenceResponse));
+   memset(response->u.conferenceResponse, 0, sizeof(H245ConferenceResponse));
+   switch ( request ){
+     case T_H245ConferenceRequest_terminalListRequest:
+       OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedConferenceRequest , build terminalListResponse  (%s, %s)\n",call->callType, call->callToken) ;
+       response->u.conferenceResponse->t = T_H245ConferenceResponse_terminalListResponse ;
+       response->u.conferenceResponse->u.terminalListResponse =  (H245ConferenceResponse_terminalListResponse*)ASN1MALLOC(pctxt, sizeof(H245ConferenceResponse_terminalListResponse));
+       H245ConferenceResponse_terminalListResponse* terminalListResponse = response->u.conferenceResponse->u.terminalListResponse ;
+       dListInit(terminalListResponse);
+       send = TRUE ;
+       break ; 
+     
+
+     case T_H245ConferenceRequest_enterH243TerminalID:
+/* 
+   typedef struct EXTERN H245ConferenceResponse_mCTerminalIDResponse {
+   H245TerminalLabel terminalLabel;
+   H245TerminalID terminalID;
+   } H245ConferenceResponse_mCTerminalIDResponse;
+
+   typedef struct EXTERN H245ConferenceResponse_terminalIDResponse {
+   H245TerminalLabel terminalLabel;
+   H245TerminalID terminalID;
+   } H245ConferenceResponse_terminalIDResponse;
+
+   typedef struct EXTERN H245TerminalLabel {
+   H245McuNumber mcuNumber;
+   H245TerminalNumber terminalNumber;
+   } H245TerminalLabel;
+
+   typedef struct EXTERN H245TerminalID {
+   ASN1UINT numocts;
+   ASN1OCTET data[128];
+   } H245TerminalID;
+
+*/
+       OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedConferenceRequest , build terminalIDResponse  (%s, %s)\n",call->callType, call->callToken) ;
+       response->u.conferenceResponse->t = T_H245ConferenceResponse_terminalIDResponse ;
+       response->u.conferenceResponse->u.terminalIDResponse =  (H245ConferenceResponse_terminalIDResponse*)ASN1MALLOC(pctxt, sizeof(H245ConferenceResponse_terminalIDResponse));
+       memset( response->u.conferenceResponse->u.terminalIDResponse , 0 , sizeof(H245ConferenceResponse_terminalIDResponse));
+       response->u.conferenceResponse->u.terminalIDResponse->terminalLabel.mcuNumber = 1 ;
+       response->u.conferenceResponse->u.terminalIDResponse->terminalLabel.terminalNumber = 1 ;
+       if(gH323ep.callerid) {
+         strncpy((char*)response->u.conferenceResponse->u.terminalIDResponse->terminalID.data, gH323ep.callerid, 128);
+       }
+       else {
+         response->u.conferenceResponse->u.terminalIDResponse->terminalID.data[0] = '\0';
+       }
+
+       response->u.conferenceResponse->u.terminalIDResponse->terminalID.numocts = strlen( (char*)response->u.conferenceResponse->u.terminalIDResponse->terminalID.data);
+       OOTRACEAST(OOTRCLVLDBGA,"ooOnReceivedConferenceRequest , terminalIDResponse  terminalID[%s/%d]  (%s, %s)\n",
+                  (char*)response->u.conferenceResponse->u.terminalIDResponse->terminalID.data,response->u.conferenceResponse->u.terminalIDResponse->terminalID.numocts,
+                  call->callType, call->callToken) ;
+       send = TRUE ;
+       break ; 
+     default :
+       OOTRACEERR4("Error:Failed to make ConferenceRespons for request %d (%s, %s)\n", 
+                   request,call->callType,call->callToken);
+       break ; 
+   }
+
+   if ( send ){
+     ret = ooSendH245Msg(call, ph245msg);
+     if(ret != OO_OK)
+     {
+       OOTRACEERR3("Error:Failed to enqueue ConferenceRequestRespons message"
+                   " to outbound queue. (%s, %s)\n", call->callType, 
+                   call->callToken);
+     }
+   }
+   ooFreeH245Message(call, ph245msg);
+   return ret;
+}
+
 int ooOpenLogicalChannels(OOH323CallData *call)
 {
    int ret=0;
-   OOTRACEINFO3("Opening logical channels (%s, %s)\n", call->callType, 
-                 call->callToken); 
+
+   OOTRACEAST(OOTRCLVLDBGA,"ooOpenLogicalChannels[%s] (%s, %s) \n", 
+              (call->masterSlaveState==OO_MasterSlave_Master)?"master":"slave",
+              call->callType, call->callToken );
 
    /* Audio channels */
    if(gH323ep.callMode == OO_CALLMODE_AUDIOCALL ||
@@ -2804,144 +3509,185 @@ int ooOpenLogicalChannels(OOH323CallData *call)
          }
       // }
    }
-   
+
    if(gH323ep.callMode == OO_CALLMODE_VIDEOCALL)
    {
      /*      if (!OO_TESTFLAG (call->flags, OO_M_AUDIOSESSION))
-        {*/
-         ret = ooOpenLogicalChannel(call, OO_CAP_TYPE_AUDIO);
-         if(ret != OO_OK)
-         {
-            OOTRACEERR3("ERROR:Failed to open audio channel. Clearing call."
-                        "(%s, %s)\n", call->callType, call->callToken);
-            if(call->callState < OO_CALL_CLEAR)
-            {
-               call->callEndReason = OO_REASON_LOCAL_CLEARED;
-               call->callState = OO_CALL_CLEAR;
-            }
-            return ret;
-         }
-      //}
-      /*      if(!OO_TESTFLAG(call->flags, OO_M_VIDEOSESSION))
-      {*/
-         ret = ooOpenLogicalChannel(call, OO_CAP_TYPE_VIDEO);
-         if(ret != OO_OK)
-         {
-            OOTRACEERR3("ERROR:Failed to open video channel. Clearing call."
-                        "(%s, %s)\n", call->callType, call->callToken);
-            if(call->callState < OO_CALL_CLEAR)
-            {
-               call->callEndReason = OO_REASON_LOCAL_CLEARED;
-               call->callState = OO_CALL_CLEAR;
-            }
-            return ret;
-         }
+             {*/
+     ret = ooOpenLogicalChannel(call, OO_CAP_TYPE_AUDIO);
+     if(ret != OO_OK)
+     {
+       OOTRACEERR3("ERROR:Failed to open audio channel. Clearing call."
+                   "(%s, %s)\n", call->callType, call->callToken);
+       if(call->callState < OO_CALL_CLEAR)
+       {
+         call->callEndReason = OO_REASON_LOCAL_CLEARED;
+         call->callState = OO_CALL_CLEAR;
+       }
+       return ret;
+     }
+     //}
+     /*      if(!OO_TESTFLAG(call->flags, OO_M_VIDEOSESSION))
+             {*/
+     ret = ooOpenLogicalChannel(call, OO_CAP_TYPE_VIDEO);
+     if(ret != OO_OK)
+     {
+       OOTRACEERR3("ERROR:Failed to open video channel. Clearing call."
+                   "(%s, %s)\n", call->callType, call->callToken);
+       if(call->callState < OO_CALL_CLEAR)
+       {
+         call->callEndReason = OO_REASON_LOCAL_CLEARED;
+         call->callState = OO_CALL_CLEAR;
+       }
+       return ret;
+     }
      //}
    }
+  
    return OO_OK;
 }
 
 /* CapType indicates whether to Open Audio or Video channel */
 int ooOpenLogicalChannel(OOH323CallData *call, enum OOCapType capType )
 {
-   ooH323EpCapability *epCap=NULL;
-   int k=0;
+  ooH323EpCapability *epCap=NULL;
+  int k=0;
 
-   /* Check whether local endpoint has audio capability */
-   if(gH323ep.myCaps == 0 && call->ourCaps == 0)
-   {
-      OOTRACEERR3("ERROR:Local endpoint does not have any audio capabilities"
-                  " (%s, %s)\n", call->callType, call->callToken);
-      return OO_FAILED;
-   }
+  OOTRACEAST(OOTRCLVLDBGA,"ooOpenLogicalChannel [%s] (%s, %s) \n", 
+             (call->masterSlaveState==OO_MasterSlave_Master)?"master":"slave",
+             call->callType, call->callToken );
+
+  /* Check whether local endpoint has audio capability */
+  if(gH323ep.myCaps == 0 && call->ourCaps == 0)
+  {
+    OOTRACEERR3("ERROR:Local endpoint does not have any audio capabilities"
+                " (%s, %s)\n", call->callType, call->callToken);
+    return OO_FAILED;
+  }
    
-   /* Go through local endpoints capabilities sequentially, and find out the
-      first one which has a match in the remote endpoints receive capabilities.
-   */
-   OOTRACEINFO3("Looking for matching capabilities. (%s, %s)\n", 
-                 call->callType, call->callToken);
-   if(call->masterSlaveState == OO_MasterSlave_Master)
-   {
-      for(k=0; k<call->capPrefs.index; k++)
-      {
-         /*Search for audio caps only */
-         if(capType == OO_CAP_TYPE_AUDIO && 
-            call->capPrefs.order[k] > OO_CAP_VIDEO_BASE)
-            continue;
-         /* Search for video caps only */
-         if(capType == OO_CAP_TYPE_VIDEO && 
-            call->capPrefs.order[k] <= OO_CAP_VIDEO_BASE)
-            continue;
+  /* Go through local endpoints capabilities sequentially, and find out the
+     first one which has a match in the remote endpoints receive capabilities.
+  */
+  switch (capType)
+  {
+    case OO_CAP_TYPE_AUDIO:
+      OOTRACEINFO3("Looking for matching AUDIO capabilities for call (%s, %s)\n", 
+                   call->callType, call->callToken);
+      break;
 
-         epCap = call->jointCaps;
+    case OO_CAP_TYPE_VIDEO:
+      OOTRACEINFO3("Looking for matching VIDEO capabilities for call (%s, %s)\n",           
+                   call->callType, call->callToken);
+      break;
+    default:
+      OOTRACEINFO4("Looking for matching capabilities of type %d for call (%s, %s)\n", 
+                   capType, call->callType, call->callToken);
+      break;
+  }
 
-         while(epCap){
-            if(epCap->cap == call->capPrefs.order[k] && (epCap->dir & OOTX))
-               break;
-            epCap = epCap->next;
-         }
-         if(!epCap)
-         {
-            OOTRACEDBGA4("Prefereed capability %d is not a local transmit "
-                         "capability(%s, %s)\n", call->capPrefs.order[k],
-                         call->callType, call->callToken);
-            continue;
-         }
-         break;
-      }
-      if(!epCap)
-      {
-         OOTRACEERR4("ERROR:Incompatible capabilities - Can not open "
-                  "%s channel (%s, %s)\n", 
-                  (capType==OO_CAP_TYPE_AUDIO)?"audio":"video", call->callType,
-                  call->callToken);
-         return OO_FAILED;
-      }
+  if(call->masterSlaveState == OO_MasterSlave_Master)
+  {
+    for(k=0; k<call->capPrefs.index; k++)
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"Master: choice Find item %d codec[%s] order[%d] \n",k , 
+                 ooGetCapTypeText(call->capPrefs.order[k]), call->capPrefs.index );
+      /*Search for audio caps only */
+      if(capType == OO_CAP_TYPE_AUDIO && call->capPrefs.order[k] > OO_CAP_VIDEO_BASE)
+        continue;
+      /* Search for video caps only */
+      if(capType == OO_CAP_TYPE_VIDEO && call->capPrefs.order[k] <= OO_CAP_VIDEO_BASE)
+        continue;
 
-   }
-   else if(call->masterSlaveState == OO_MasterSlave_Slave)
-   {
       epCap = call->jointCaps;
+      OOTRACEAST(OOTRCLVLDBGA,"Master: choice epCap [%s][%d] (%s, %s) \n", 
+                 ooGetCapTypeText(epCap->cap),epCap->cap,call->callType, call->callToken );
 
       while(epCap){
-         if(epCap->capType == capType && epCap->dir & OOTX) { break; }
-         epCap = epCap->next;
+        if(epCap->cap == call->capPrefs.order[k] && (epCap->dir & OOTX))
+          break;
+        epCap = epCap->next;
       }
+
       if(!epCap)
       {
-         OOTRACEERR4("ERROR:Incompatible audio capabilities - Can not open "
-                  "%s channel (%s, %s)\n", 
+        OOTRACEDBGA4("Prefereed capability %d is not a local transmit "
+                     "capability(%s, %s)\n", call->capPrefs.order[k],
+                     call->callType, call->callToken);
+        continue;
+      }
+      OOTRACEAST(OOTRCLVLDBGA,"have common capability epCap [%s][%d] (%s, %s) \n", 
+                 ooGetCapTypeText(epCap->cap),epCap->cap,call->callType, call->callToken );
+      break ;
+    }
+    if(!epCap)
+    {
+      OOTRACEERR4("ERROR:Incompatible capabilities - Can not open " "%s channel (%s, %s)\n", 
                   (capType==OO_CAP_TYPE_AUDIO)?"audio":"video", call->callType,
                   call->callToken);
-         return OO_FAILED;
-      }
-       
-   }
+      return OO_FAILED;
+    }
+  }
+  else if(call->masterSlaveState == OO_MasterSlave_Slave)
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"Slave choice call (%s, %s) \n", 
+               call->callType, call->callToken ); 
+    epCap = call->jointCaps;
 
-   switch(epCap->cap)
-   {
-   case OO_G711ALAW64K:
-   case OO_G711ALAW56K:
-   case OO_G711ULAW64K:
-   case OO_G711ULAW56K:
-   /*case OO_G726:*/
-   case OO_G728:
-   case OO_G729:
-   case OO_G729A:
-   case OO_G7231:
-   case OO_GSMFULLRATE:
-   case OO_H263VIDEO:
+    while(epCap){
+      OOTRACEAST(OOTRCLVLDBGA,"ooOpenLogicalChannel(): slave mode, local cap %s dir %d.\n",
+                  ooGetCapTypeText(epCap->cap), epCap->dir );
+      if(epCap->capType == capType && epCap->dir & OOTX) { break; }
+      epCap = epCap->next;
+    }
+    if(!epCap)
+    {
+      OOTRACEERR4("ERROR:Incompatible capabilities (in slave mode)- Can not open "
+                  "%s channel (%s, %s) \n", 
+                  (capType==OO_CAP_TYPE_AUDIO)?"audio":"video", call->callType,
+                  call->callToken);
+      return OO_FAILED;
+    }
+
+    if ( epCap )
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"Slave choice epCap [%s][%d] (%s, %s) \n", 
+                 ooGetCapTypeText(epCap->cap),epCap->cap,call->callType, call->callToken );   
+    }
+  }
+
+  if ( epCap->cap == OO_GENERICVIDEO && epCap->params ) {
+    // Check for re invite 
+    if(gH323ep.h323Callbacks.onReceivedMiscellaneous){
+      struct OOH264CapParams caps;
+      memcpy( &caps , epCap->params , sizeof(OOH264CapParams));
+      gH323ep.h323Callbacks.onReceivedMiscellaneous(call,OO_MISC_CMD_CAPABILITY,&caps);
+    }
+  }
+  switch(epCap->cap)
+  {
+    case OO_G711ALAW64K:
+    case OO_G711ULAW64K:
+    case OO_G711ALAW56K:
+    case OO_G711ULAW56K:
+      /*case OO_G726:*/
+    case OO_G728:
+    case OO_G729A:
+    case OO_G729:
+    case OO_G7231:
+    case OO_GSMFULLRATE:
+    case OO_H263VIDEO:
+    case OO_GENERICVIDEO:
       ooOpenChannel(call, epCap);
       break;
-   case OO_GSMHALFRATE:
-   case OO_GSMENHANCEDFULLRATE:
+    case OO_GSMHALFRATE:
+    case OO_GSMENHANCEDFULLRATE:
 
-      
-   default:
-      OOTRACEERR3("ERROR:Unknown Audio Capability type (%s, %s)\n", 
-                   call->callType, call->callToken);
-   }
-   return OO_OK;
+    default:
+      OOTRACEERR4("ERROR:Unknown/unsupported Capability %s for call (%s, %s)\n", 
+                  ooGetCapTypeText(epCap->cap), call->callType, 
+                  call->callToken);
+  }
+  return OO_OK;
 }
 
 int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
@@ -2959,22 +3705,26 @@ int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
    unsigned session_id=0;
    ooLogicalChannel *pLogicalChannel = NULL;
    
-   OOTRACEDBGC4("Doing Open Channel for %s. (%s, %s)\n", 
-                 ooGetCapTypeText(epCap->cap), call->callType, 
-                 call->callToken);
+   OOTRACEAST(OOTRCLVLDBGA,"ooOpenChannel [%s] epcap[%s][%d]  (%s, %s) \n", 
+              (call->masterSlaveState==OO_MasterSlave_Master)?"master":"slave",
+              ooGetCapTypeText(epCap->cap),epCap->cap,
+              call->callType, call->callToken );
 
-   ret = ooCreateH245Message(&ph245msg, 
-                      T_H245MultimediaSystemControlMessage_request);
+   
+   if(call->masterSlaveState == OO_MasterSlave_Master)
+   {
+     SetLocalCapChoice( call , epCap ) ;
+   }
+   ret = ooCreateH245Message(&ph245msg,  T_H245MultimediaSystemControlMessage_request);
    if(ret != OO_OK)
    {
-      OOTRACEERR4("Error: H245 message creation failed for - Open %s"
+      OOTRACEERR4("Error: ooOpenChannel H245 message creation failed for - Open %s"
                   "channel (%s, %s)\n", ooGetCapTypeText(epCap->cap), 
                   call->callType, call->callToken);
       return OO_FAILED;
    }
 
    ph245msg->msgType = OOOpenLogicalChannel;
-
    ph245msg->logicalChannelNo =  call->logicalChanNoCur++;
    if(call->logicalChanNoCur > call->logicalChanNoMax)
       call->logicalChanNoCur = call->logicalChanNoBase; 
@@ -2993,8 +3743,7 @@ int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
       return OO_FAILED;
 
    }
-   memset(request->u.openLogicalChannel, 0, 
-                                     sizeof(H245OpenLogicalChannel));
+   memset(request->u.openLogicalChannel, 0,  sizeof(H245OpenLogicalChannel));
    request->u.openLogicalChannel->forwardLogicalChannelNumber = 
                                                  ph245msg->logicalChannelNo;
 
@@ -3057,7 +3806,6 @@ int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
       OOTRACEERR1("Error: Unhandled media type in ooOpenChannel\n");
       return OO_FAILED;
    }
-
   
    flcp->multiplexParameters.t = 
       T_H245OpenLogicalChannel_forwardLogicalChannelParameters_multiplexParameters_h2250LogicalChannelParameters;
@@ -3092,10 +3840,46 @@ int ooOpenChannel(OOH323CallData* call, ooH323EpCapability *epCap)
    iPAddress->network.numocts = 4;
    iPAddress->tsapIdentifier = pLogicalChannel->localRtcpPort;
    pLogicalChannel->state = OO_LOGICALCHAN_PROPOSED; 
-   OOTRACEDBGA4("Built OpenLogicalChannel-%s (%s, %s)\n", 
-                 ooGetCapTypeText(epCap->cap), call->callType, 
+
+   /* IVeS - ajout dynamic payload type pour H.264 */
+   if (epCap->cap == OO_GENERICVIDEO)
+   {
+      if (pLogicalChannel->rtpPayloadType >= 96 && pLogicalChannel->rtpPayloadType <= 127)
+      {
+         h2250lcp->m.dynamicRTPPayloadTypePresent = TRUE;
+         h2250lcp->dynamicRTPPayloadType = pLogicalChannel->rtpPayloadType;
+         OOTRACEAST(OOTRCLVLDBGA,"Dynamic RTP pt = %d for cap %s (%s, %s)\n", 
+                      pLogicalChannel->rtpPayloadType, ooGetCapTypeText(epCap->cap), call->callType, 
                  call->callToken);
+#if 1 // if have packetisation mode 0
+         h2250lcp->m.mediaPacketizationPresent = TRUE ;
+         h2250lcp->mediaPacketization.t = T_H245H2250LogicalChannelParameters_mediaPacketization_rtpPayloadType ;
+
+         ASN1OBJID h241_h264 =
+           {
+             8, /* nb de composants de l'OID */
+             { 0, 0, 8, 241, 0, 0, 0,0 }
+           };
+
+         h2250lcp->mediaPacketization.u.rtpPayloadType = (H245RTPPayloadType*) ASN1MALLOC(pctxt, sizeof(H245RTPPayloadType));
+         H245RTPPayloadType* rtpPayloadType = h2250lcp->mediaPacketization.u.rtpPayloadType ;
+         memset(rtpPayloadType, 0, sizeof(H245RTPPayloadType));
+         rtpPayloadType->m.payloadTypePresent = TRUE ;
+         rtpPayloadType->payloadDescriptor.t=T_H245RTPPayloadType_payloadDescriptor_oid;
+         rtpPayloadType->payloadDescriptor.u.oid =  ALLOC_ASN1ELEM (pctxt, ASN1OBJID);
+         memcpy(rtpPayloadType->payloadDescriptor.u.oid, &h241_h264, sizeof(h241_h264));
+         rtpPayloadType->payloadType = pLogicalChannel->rtpPayloadType ;
+#endif
+      }
+   }
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/H245]ooOpenChannel  SEND --> OLC:%s:%d <=[ %s ]  (%s, %s)\n",
+              (pLogicalChannel->localIP)?pLogicalChannel->localIP:"Null", 
+              pLogicalChannel->localRtpPort,
+              ooGetCapTypeText(epCap->cap),
+              call->callType, call->callToken);
+
    ret = ooSendH245Msg(call, ph245msg);
+   // call->haveSendOLC = TRUE ;
    if(ret != OO_OK)
    {
       OOTRACEERR3("Error:Failed to enqueue OpenLogicalChannel to outbound "
@@ -3494,8 +4278,10 @@ int ooSessionTimerExpired(void *pdata)
 
    memFreePtr(call->pctxt, cbData);
 
-   if(call->callState == OO_CALL_CLEAR_RELEASESENT)
+   if(call->callState == OO_CALL_CLEAR_RELEASESENT){
+     OOTRACEAST(OOTRCLVLDBGA,"ooSessionTimerExpired upd callState[CLEARED]\n");
       call->callState = OO_CALL_CLEARED;
+   }
    
    return OO_OK;
 }
@@ -3683,4 +4469,617 @@ int ooPrepareFastStartResponseOLC
 }
 
 
+void ooTraceH245Msg(OOH323CallData *call, H245Message *msgS , H245Message *msgR )
+{
+  if( msgS )
+  {
+     switch ( msgS->msgType )
+   {
+     // MSD
+    case OOMasterSlaveDetermination:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> MSD ( Master Slave Determ. )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
 
+     case OOMasterSlaveAck:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> MSDAck (Master Slave Determ. Ack )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOMasterSlaveReject:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> MSDReject  (Master Slave Determ. Reject )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOMasterSlaveRelease:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> MSR ( Master Slave Release )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+       // TCS
+    case OOTerminalCapabilitySet:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> TCS ( Terminal Capability Set ) "
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOTerminalCapabilitySetReject:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> TCSReject ( Terminal Capability Set Reject ) "
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOTerminalCapabilitySetAck:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> TCSAck ( Terminal Capability Set Ack ) "
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOTerminalCapabilitySetRelease:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> TCSRelease ( Terminal Capability Set Release ) "
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+       // OLC
+     case OOOpenLogicalChannel:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> OLC ( Open Logical Channel ) "
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOOpenLogicalChannelAck:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> OLCAck ( Open Logical Channel Ack ) "
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOOpenLogicalChannelReject:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> OLCReject ( Open Logical Channel Reject )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOOpenLogicalChannelRelease:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> OLCReject ( Open Logical Channel Release )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOOpenLogicalChannelConfirm:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> OLCConfirm ( Open Logical Channel Confirm )"
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+       // CLC
+     case OOCloseLogicalChannel:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> CLC ( Close Logical Chanel )"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOCloseLogicalChannelAck:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> CLCAck ( Close Logical Chanel Ack. )"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+       // RCC
+     case OORequestChannelClose:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> RCC ( Request Channel Close )"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OORequestChannelCloseRelease:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> RCCRelease (Request Channel Close Release ) "
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OORequestChannelCloseAck:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send -->  RCCAck ( Request Channel Close Ack.)"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OORequestChannelCloseReject:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send -->  RCCReject ( Request Channel Close Reject.)"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOUserInputIndication:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> UII ( User Input Indication) "
+                  " (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOEndSessionCommand:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> ESC ( End Session Command )"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOflowControlCommand:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> FCC ( flow Control Command )"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OOMiscellaneousCommand:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> MC (  Miscellaneous Command )"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+
+     case OORoundTripDelayRespons:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> RTDR Round Trip Delay Respons"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOMiscellaneousIndication:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send --> MI Miscellaneous Indication"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     case OOConferenceRequestRespons:
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Send -->  Conference Request Respons"
+                  "  (%s, %s)\n", 
+                  call->callType, call->callToken);
+       break ;
+     default :
+       OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Unknow Send %d (%s, %s)\n", 
+                  msgS->msgType , call->callType, call->callToken);
+       break ; 
+       
+   }
+  }
+  
+  if ( msgR )
+  {
+    H245RequestMessage    *request         = msgR->h245Msg.u.request;
+    H245ResponseMessage   *response        = msgR->h245Msg.u.response;
+    H245CommandMessage    *command         = msgR->h245Msg.u.command;
+    H245IndicationMessage *indication      = msgR->h245Msg.u.indication;
+    int                   SwitchType       = request->t ; 
+    int                   Status           = TRUE ;
+    char                  traces[PATH_MAX] = { 0 };
+    char                  head[PATH_MAX]   = { 0 };
+    switch(msgR->h245Msg.t)
+    {
+      case T_H245MultimediaSystemControlMessage_request:
+        snprintf( head , PATH_MAX , "Request " );
+        switch (request->t )
+        {
+          case T_H245RequestMessage_nonStandard:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  Non standart " );
+            break ;
+
+          case T_H245RequestMessage_masterSlaveDetermination:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  MSD ( Master Slave Determ. )" );
+            break ;
+
+          case T_H245RequestMessage_terminalCapabilitySet:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  TCS ( Terminal Capability Set )" );
+            break ;
+
+          case T_H245RequestMessage_openLogicalChannel:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- OLC ( Open Logical Channel ) " );
+            break ;
+
+          case T_H245RequestMessage_closeLogicalChannel:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- CLC ( Close Logical Chanel ) " );
+            break ;
+
+          case T_H245RequestMessage_requestChannelClose:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RCC ( Request Channel Close ) " );
+            break ;
+
+          case T_H245RequestMessage_multiplexEntrySend:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- MESend ( Multiplex. Entry Send ) " );
+            break ;
+
+          case T_H245RequestMessage_requestMultiplexEntry:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RME ( Request Multiplex. Entry ) " );
+            break ;
+
+          case T_H245RequestMessage_requestMode:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RMode " );
+            break ;
+
+          case T_H245RequestMessage_roundTripDelayRequest:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Round Trip Delay Request  " );
+            break ;
+
+          case T_H245RequestMessage_maintenanceLoopRequest:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Maintenance " );
+            break ;
+
+          case T_H245RequestMessage_communicationModeRequest:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Communication Mode" );
+            break ;
+
+          case T_H245RequestMessage_conferenceRequest:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Conference " );
+            break ;
+
+          case T_H245RequestMessage_multilinkRequest:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Multilink " );
+            break ;
+
+          case T_H245RequestMessage_logicalChannelRateRequest:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Channel Rate " );
+            break ;
+
+          case T_H245RequestMessage_extElem1:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- extended element " );
+            break ;
+
+          default:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- unknown %d",request->t  );
+            break ;
+        }
+        break ;
+
+      case T_H245MultimediaSystemControlMessage_response:
+        snprintf( head , PATH_MAX , "Respons " );
+        switch ( response->t )
+        {
+          case T_H245ResponseMessage_nonStandard:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  Non standart " );
+            break ;
+
+          case T_H245ResponseMessage_masterSlaveDeterminationAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  MSDAck" );
+            break ;
+
+          case T_H245ResponseMessage_masterSlaveDeterminationReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  MSDReject " );
+            break ;
+
+          case T_H245ResponseMessage_terminalCapabilitySetAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- TCSAsck " );
+            break ;
+
+          case T_H245ResponseMessage_terminalCapabilitySetReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- TCSReject " );
+            break ;
+
+          case T_H245ResponseMessage_openLogicalChannelAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- OLCAck " );
+            break ;
+
+          case T_H245ResponseMessage_openLogicalChannelReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- OLCReject " );
+            break ;
+
+          case T_H245ResponseMessage_closeLogicalChannelAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- CLCAck " );
+            break ;
+
+          case T_H245ResponseMessage_requestChannelCloseAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  RCCRequest" );
+            break ;
+
+          case T_H245ResponseMessage_requestChannelCloseReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  RCCReject" );
+            break ;
+
+          case T_H245ResponseMessage_multiplexEntrySendAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  MESAck " );
+            break ;
+
+          case T_H245ResponseMessage_multiplexEntrySendReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  MESReject " );
+            break ;
+
+          case T_H245ResponseMessage_requestMultiplexEntryAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RMEAck  " );
+            break ;
+
+          case T_H245ResponseMessage_requestMultiplexEntryReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  RMEReject" );
+            break ;
+
+          case T_H245ResponseMessage_requestModeAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RMAck " );
+            break ;
+
+          case T_H245ResponseMessage_requestModeReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RMReject " );
+            break ;
+
+          case T_H245ResponseMessage_roundTripDelayResponse:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Delay " );
+            break ;
+
+          case T_H245ResponseMessage_maintenanceLoopAck:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Maintenance Ack " );
+            break ;
+
+          case T_H245ResponseMessage_maintenanceLoopReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Maintenance Reject " );
+            break ;
+
+          case T_H245ResponseMessage_communicationModeResponse:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Comunication Mode " );
+            break ;
+
+          case T_H245ResponseMessage_conferenceResponse:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Conference Respons " );
+            break ;
+
+          case T_H245ResponseMessage_multilinkResponse:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Multilink Respons " );
+            break ;
+
+          case T_H245ResponseMessage_logicalChannelRateAcknowledge:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Chanel Rate Ack " );
+            break ;
+
+          case T_H245ResponseMessage_logicalChannelRateReject:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Chanel Rate Reject " );
+            break ;
+
+          case T_H245ResponseMessage_extElem1:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- extended element  " );
+            break ;
+
+          default:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- unknown %d ",response->t );
+            break ;
+
+        }
+        break ;
+
+      case T_H245MultimediaSystemControlMessage_command:
+        snprintf( head , PATH_MAX , " Command " );
+        switch ( command->t )
+        {
+          case T_H245CommandMessage_nonStandard:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  Non standart " );
+            break ;
+
+          case T_H245CommandMessage_maintenanceLoopOffCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Maintenance  " );
+            break ;
+
+          case T_H245CommandMessage_sendTerminalCapabilitySet:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- TCS " );
+            break ;
+
+          case T_H245CommandMessage_encryptionCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Encryption " );
+            break ;
+
+          case T_H245CommandMessage_flowControlCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Flow Control " );
+            break ;
+
+          case T_H245CommandMessage_endSessionCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- ESC " );
+            break ;
+
+          case T_H245CommandMessage_miscellaneousCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- miscellaneous " );
+            break ;
+
+          case T_H245CommandMessage_communicationModeCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Communication " );
+            break ;
+
+          case T_H245CommandMessage_conferenceCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Conference " );
+            break ;
+
+          case T_H245CommandMessage_h223MultiplexReconfiguration:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- MultiplexReconfiguration " );
+            break ;
+
+          case T_H245CommandMessage_newATMVCCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- ATMV " );
+            break ;
+
+          case T_H245CommandMessage_mobileMultilinkReconfigurationCommand:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  mobileMultilinkReconfiguration" );
+            break ;
+
+          case T_H245CommandMessage_extElem1:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  extended element" );
+            break ;
+            
+          default:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  unknown %d ",command->t );
+            break ;
+        }
+        break ;
+
+      case T_H245MultimediaSystemControlMessage_indication:
+        snprintf( head , PATH_MAX , " Indication " );
+        switch (indication->t)
+        {
+          case T_H245IndicationMessage_nonStandard:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <--  Non standart " );
+            break ;
+
+          case T_H245IndicationMessage_functionNotUnderstood:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- function Not Understood " );
+            break ;
+
+          case T_H245IndicationMessage_masterSlaveDeterminationRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- MSDRelease " );
+            break ;
+
+          case T_H245IndicationMessage_terminalCapabilitySetRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- TCSRelease " );
+            break ;
+
+          case T_H245IndicationMessage_openLogicalChannelConfirm:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- OLCConfirm " );
+            break ;
+
+          case T_H245IndicationMessage_requestChannelCloseRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RCCRelease " );
+            break ;
+
+          case T_H245IndicationMessage_multiplexEntrySendRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- MESRelease " );
+            break ;
+
+          case T_H245IndicationMessage_requestMultiplexEntryRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RMERelease " );
+            break ;
+
+          case T_H245IndicationMessage_requestModeRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- RMRelease " );
+            break ;
+
+          case T_H245IndicationMessage_miscellaneousIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Misc. Indication " );
+            break ;
+
+          case T_H245IndicationMessage_jitterIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Jitter Indication " );
+            break ;
+
+          case T_H245IndicationMessage_h223SkewIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- h223 Skew Indication " );
+            break ;
+
+          case T_H245IndicationMessage_newATMVCIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- New ATm Indication " );
+            break ;
+
+          case T_H245IndicationMessage_userInput:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- User Input " );
+            break ;
+
+          case T_H245IndicationMessage_h2250MaximumSkewIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- h2250 Max Skew Indication " );
+            break ;
+
+          case T_H245IndicationMessage_mcLocationIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- mc Location Indication " );
+            break ;
+
+          case T_H245IndicationMessage_conferenceIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Conference Indiciation " );
+            break ;
+
+          case T_H245IndicationMessage_vendorIdentification:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Vendor ID " );
+            break ;
+
+          case T_H245IndicationMessage_functionNotSupported:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- function Not Supported  " );
+            break ;
+
+          case T_H245IndicationMessage_multilinkIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- MultiLink Indication " );
+            break ;
+
+          case T_H245IndicationMessage_logicalChannelRateRelease:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- LCRRelease " );
+            break ;
+
+          case T_H245IndicationMessage_flowControlIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Flow Control Indication " );
+            break ;
+
+          case T_H245IndicationMessage_mobileMultilinkReconfigurationIndication:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- Mobile Multi Link ReConf. " );
+            break ;
+
+          case T_H245IndicationMessage_extElem1:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- extended element " );
+            break ;
+
+          default:
+            snprintf( traces , PATH_MAX , "[H323/H245] RECV <-- unknown %d ",indication->t );
+            break ;
+        }
+        break ;
+      case T_H245MultimediaSystemControlMessage_extElem1:
+        OOTRACEAST(OOTRCLVLERR,"[H323/H245] RECV <-- MSC ( Multimedia System Control ) "
+                   "not implemented (%s, %s)\n", 
+                   call->callType, call->callToken);
+        Status = FALSE  ;
+        break ;
+      default :
+        OOTRACEAST(OOTRCLVLERR,"[H323/H245] Unknow RECV %d (%s, %s)\n", 
+                   msgR->h245Msg.t , call->callType, call->callToken);
+        Status = FALSE ;
+        break ; 
+    }
+    if ( Status ) 
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"%s %s (%s, %s)\n", 
+                 traces,head,call->callType, call->callToken);
+    }
+  }
+}
+
+int SetLocalCapChoice( OOH323CallData* call, ooH323EpCapability *epCap)
+{
+  if ( epCap->cap < OO_CAP_VIDEO_BASE )
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"SetLocalCapChoice localAudioChoice [%s] (%s, %s) \n",
+               ooGetCapTypeText(epCap->cap),call->callType, call->callToken );
+    call->localAudioChoice =  (ooH323EpCapability*)memAlloc(call->pctxt, 
+                                                            sizeof(ooH323EpCapability));
+    memcpy(call->localAudioChoice , epCap , sizeof(ooH323EpCapability));
+    call->localAudioChoice->next = NULL ;
+  }
+  else
+  {
+    if ( epCap->cap > OO_CAP_VIDEO_BASE &&  epCap->cap <= OO_EXTELEMVIDEO )
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"SetLocalCapChoice localVideoChoice [%s] (%s, %s) \n",
+                 ooGetCapTypeText(epCap->cap),call->callType, call->callToken );
+      call->localVideoChoice =  (ooH323EpCapability*)memAlloc(call->pctxt, 
+                                                              sizeof(ooH323EpCapability));
+      memcpy(call->localVideoChoice , epCap , sizeof(ooH323EpCapability));
+      call->localVideoChoice->next = NULL ;       
+    }
+    else
+    {
+      OOTRACEERR4("SetLocalCapChoice : Master mode but unknown codec %d "
+                  "channel (%s, %s)\n",epCap->cap, 
+                  call->callType, call->callToken);
+      return OO_FAILED;
+    }
+  }
+}
+
+int SetRemoteCapChoice( OOH323CallData* call, ooH323EpCapability *epCap)
+{
+  int Status = OO_OK ;
+  if ( epCap->cap < OO_CAP_VIDEO_BASE )
+  {
+    OOTRACEAST(OOTRCLVLDBGA,"SetRemoteCapChoice RemoteAudioChoice [%s] (%s, %s) \n",
+               ooGetCapTypeText(epCap->cap),call->callType, call->callToken );
+    call->RemoteAudioChoice =  (ooH323EpCapability*)memAlloc(call->pctxt, 
+                                                            sizeof(ooH323EpCapability));
+    memcpy(call->RemoteAudioChoice , epCap , sizeof(ooH323EpCapability));
+  }
+  else
+  {
+    if ( epCap->cap > OO_CAP_VIDEO_BASE &&  epCap->cap <= OO_EXTELEMVIDEO )
+    {
+      OOTRACEAST(OOTRCLVLDBGA,"SetRemoteCapChoice RemoteVideoChoice [%s] (%s, %s) \n",
+                 ooGetCapTypeText(epCap->cap),call->callType, call->callToken );
+      call->RemoteVideoChoice =  (ooH323EpCapability*)memAlloc(call->pctxt, 
+                                                              sizeof(ooH323EpCapability));
+      memcpy(call->RemoteVideoChoice , epCap , sizeof(ooH323EpCapability));
+      call->RemoteVideoChoice->next = NULL ;       
+    }
+    else
+    {
+      OOTRACEERR4("SetRemoteCapChoice : Slave mode but unknown codec %d "
+                  "channel (%s, %s)\n",epCap->cap, 
+                  call->callType, call->callToken);
+      Status == OO_FAILED ;
+    }
+  }
+}

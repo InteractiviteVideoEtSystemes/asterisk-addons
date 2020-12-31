@@ -144,13 +144,13 @@ void dListFindAndRemove(DList* pList, void *data)
       dListRemove(pList, pNode);
 }
     
-DListNode* dListFindByIndex (DList* pList, int index) 
+DListNode* dListFindByIndex (DList* pList, int pindex) 
 {
    DListNode* curNode;
    int i;
 
-   if(index >= (int)pList->count) return 0;
-   for(i = 0, curNode = pList->head; i < index && curNode != 0; i++) {
+   if(pindex >= (int)pList->count) return 0;
+   for(i = 0, curNode = pList->head; i < pindex && curNode != 0; i++) {
       curNode = curNode->next;
    }
    return curNode;

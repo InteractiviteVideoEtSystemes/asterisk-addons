@@ -36,6 +36,7 @@
 /* Error Code Constants */
 
 #define ASN_OK            0      /* normal completion status             */
+#define ASN_SOCKET_INPROG 1      /* Socket in progress of connection     */
 #define ASN_OK_FRAG       2      /* message fragment detected            */
 #define ASN_E_BUFOVFLW   -1      /* encode buffer overflow               */
 #define ASN_E_ENDOFBUF   -2      /* unexpected end of buffer on decode   */
@@ -136,7 +137,7 @@
 #define ASN_K_MAXENUM   100     /* maximum enum values in an enum type  */
 #define ASN_K_MAXERRP   5       /* maximum error parameters             */
 #define ASN_K_MAXERRSTK 8       /* maximum levels on error ctxt stack   */
-#define ASN_K_ENCBUFSIZ 2*1024 /* dynamic encode buffer extent size    */
+#define ASN_K_ENCBUFSIZ 8*1024 /* dynamic encode buffer extent size    */
 #define ASN_K_MEMBUFSEG 1024    /* memory buffer extent size            */
 
 /* Canonical character set definitions */
@@ -1788,7 +1789,7 @@ EXTERN int bitAndOctetStringAlignmentTest
 
 EXTERN int getPERMsgLen (OOCTXT* pctxt);
 
-EXTERN int addSizeConstraint (OOCTXT* pctxt, Asn1SizeCnst* pSize);
+
 
 EXTERN Asn1SizeCnst* getSizeConstraint (OOCTXT* pctxt, ASN1BOOL extbit);
 

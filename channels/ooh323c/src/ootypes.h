@@ -88,6 +88,7 @@ typedef enum OOMasterSlaveState {
    OO_MasterSlave_Idle,
    OO_MasterSlave_DetermineSent, 
    OO_MasterSlave_AckReceived,
+   OO_MasterSlave_AckSent,
    OO_MasterSlave_Master,
    OO_MasterSlave_Slave
 } OOMasterSlaveState;
@@ -180,8 +181,12 @@ typedef enum OOCallClearReason {
 #define OORequestChannelCloseRelease       128
 #define OOEndSessionCommand                129
 #define OOUserInputIndication              130
-
-#define OO_MSGTYPE_MAX                     130
+#define OOflowControlCommand               131
+#define OOMiscellaneousCommand             132
+#define OORoundTripDelayRespons            133
+#define OOMiscellaneousIndication          134
+#define OOConferenceRequestRespons         135
+#define OO_MSGTYPE_MAX                     135
 
 /* Timer types */
 #define OO_CALLESTB_TIMER  (1<<0)
@@ -248,6 +253,12 @@ typedef struct ooTimerCallback{
    ASN1UINT    timerType;
    ASN1UINT    channelNumber;
 } ooTimerCallback;
+
+typedef enum OOH323MiscCmd {
+   OO_MISC_CMD_UNKNOWN=0, 
+   OO_MISC_CMD_VIDUPDATE,
+   OO_MISC_CMD_CAPABILITY
+} OOH323MiscCmd;
 
 /**
  * @}

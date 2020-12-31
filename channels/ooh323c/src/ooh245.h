@@ -123,7 +123,7 @@ EXTERN int ooSendTermCapMsg(struct OOH323CallData *call);
  *
  * @return          Generated status determination number.
  */
-EXTERN ASN1UINT ooGenerateStatusDeterminationNumber();
+EXTERN ASN1UINT ooGenerateStatusDeterminationNumber(void);
 
 /**
  * This fuction is used to handle received MasterSlaveDetermination procedure
@@ -145,7 +145,7 @@ EXTERN int ooHandleMasterSlave
  *
  * @return           OO_OK, on success. OO_FAILED, on failure.
  */
-EXTERN int ooSendMasterSlaveDetermination(struct OOH323CallData *call);
+  EXTERN int ooSendMasterSlaveDetermination(struct OOH323CallData *call , int force );
 
 /**
  * This function is used to send a MasterSlaveDeterminationAck message.
@@ -411,6 +411,35 @@ EXTERN int ooSendH245UserInputIndication_signal
    (OOH323CallData *call, const char *data);
 
 /**
+ *  This function is used to send a Video Update Request (IVeS)
+ ** @param call            Handle to the call for which dtmf has to be sent.
+ *  @param first	   First GOB to refresh (-1 for null data)
+ *  @param bbgobs	   Nb of GOBs to refresh (-1 for null data)
+ *
+ * @return                OO_OK, on success; OO_FAILED, on failure.
+ */
+EXTERN int ooSendH245VideoUpdateRequest
+   (OOH323CallData *call, int firstgob, int nbgobs);
+
+
+/**
+ *  This function is used to send logicalchannelActive  (IVeS)
+ ** @param call            Handle to the call for which dtmf has to be sent.
+ *
+ * @return                OO_OK, on success; OO_FAILED, on failure.
+ */
+EXTERN int ooSendH245MIlogicalchannelActive(OOH323CallData *call ,H245LogicalChannelNumber LogicalChannelNumber);
+
+/**
+ *  This function is used to send a RoundTripDelayRespons (IVeS)
+ ** @param call            Handle to the call for which dtmf has to be sent.
+ *  @param sequenceNumber  Sequance number 
+ * @return                OO_OK, on success; OO_FAILED, on failure.
+ */
+EXTERN int ooOnReceivedRequestRoundTripDelayRequest
+   (OOH323CallData *call, H245SequenceNumber sequenceNumber);
+
+/**
  * This function is used to request a remote end point to close a logical
  * channel. 
  * @param call            Pointer to call for which the logical channel has to
@@ -626,6 +655,36 @@ int ooRequestChannelCloseTimerExpired(void *pdata);
  * @return                 OO_OK, on success. OO_FAILED, otherwise.
  */
 int ooSessionTimerExpired(void *pdata);
+
+/**
+ * This is a function for trace H245 message.
+ * @param call             Pointer to call to be traces.
+ * @param msg              Pointer to the H.245 message to be sent. *
+ * @return                 OO_OK, on success. OO_FAILED, otherwisevoid.
+ */
+void ooTraceH245Msg(OOH323CallData *call, H245Message *msgS , H245Message *msgR );
+
+/**
+ * This function is used to send out a Flow control ack. 
+ *
+ * @param call      Pointer to a call for which  message
+ *                  will be sent.
+ * 
+ * @return          OO_OK, on success. OO_FAILED, on failure.  
+ */
+int ooSendFlowControlAck(OOH323CallData* call);
+
+
+/* MSD mode configuration */
+int ooH245SetSendMSD(int value);
+void ooH245setMsdMode( char* defaultMode );
+int ooShowMSDConfig(void);
+int SetLocalCapChoice( OOH323CallData* call, ooH323EpCapability *epCap);
+int SetRemoteCapChoice( OOH323CallData* call, ooH323EpCapability *epCap);
+int ooH245SetWaitOLC(int value);
+int ooH245SetCheckOLC(int value);
+int ooH245GetCheckOLC(void);
+
 /** 
  * @} 
  */

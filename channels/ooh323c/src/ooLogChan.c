@@ -24,10 +24,9 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
                                          int sessionID, char *dir, 
                                          ooH323EpCapability *epCap)
 {
-   OOLogicalChannel *pNewChannel=NULL, *pChannel=NULL;
-   OOMediaInfo *pMediaInfo = NULL;
-   OOTRACEDBGC5("Adding new media channel for cap %d dir %s (%s, %s)\n",
-               epCap->cap, dir, call->callType, call->callToken);
+   OOLogicalChannel* pNewChannel=NULL, *pChannel=NULL;
+   OOMediaInfo*      pMediaInfo = NULL;
+
    /* Create a new logical channel entry */
    pNewChannel = (OOLogicalChannel*)memAlloc(call->pctxt, 
                                                      sizeof(OOLogicalChannel));
@@ -47,8 +46,7 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
    strcpy(pNewChannel->dir, dir);
 
    pNewChannel->chanCap = epCap;
-   OOTRACEDBGC4("Adding new channel with cap %d (%s, %s)\n", epCap->cap,
-                call->callType, call->callToken); 
+ 
    /* As per standards, media control port should be same for all 
       proposed channels with same session ID. However, most applications
       use same media port for transmit and receive of audio streams. Infact,
@@ -56,11 +54,15 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
       Hence we first search for existing media ports for same session and use 
       them. This should take care of all cases.
    */
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/RTP] ooAddNewLogicalChannel (%s, %s) ->MediaInfo[0x%x]\n",
+              call->callType,call->callToken,call->mediaInfo);
    if(call->mediaInfo)
    {
       pMediaInfo = call->mediaInfo;
       while(pMediaInfo)
       {
+        OOTRACEAST(OOTRCLVLDBGA,"[H323/RTP] ooAddNewLogicalChannel check dir mediaInfo[%s:%d]/cap[%s:%d] \n ",
+                    pMediaInfo->dir, pMediaInfo->cap , dir, epCap->cap);
          if(!strcmp(pMediaInfo->dir, dir) &&
             (pMediaInfo->cap == epCap->cap))
          {
@@ -72,10 +74,12 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
     
    if(pMediaInfo)
    {
-      OOTRACEDBGC3("Using configured media info (%s, %s)\n", call->callType,
-                   call->callToken);
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/RTP] ooAddNewLogicalChannel"
+                 " Using configured media info (%s, %s)\n", call->callType,
+                 call->callToken);
       pNewChannel->localRtpPort = pMediaInfo->lMediaPort;
       pNewChannel->localRtcpPort = pMediaInfo->lMediaCntrlPort;
+      pNewChannel->rtpPayloadType = pMediaInfo->rtpPayloadType;
       /* If user application has not specified a specific ip and is using 
          multihomed mode, substitute appropriate ip.
       */
@@ -85,8 +89,9 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
          strcpy(pNewChannel->localIP, pMediaInfo->lMediaIP);
    }
    else{
-      OOTRACEDBGC3("Using default media info (%s, %s)\n", call->callType,
-                   call->callToken);
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/RTP] ooAddNewLogicalChannel"
+                 " Using default media info (%s, %s)\n", call->callType,
+                 call->callToken);
       pNewChannel->localRtpPort = ooGetNextPort (OORTP);
 
       /* Ensures that RTP port is an even one */
@@ -96,7 +101,14 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
       pNewChannel->localRtcpPort = ooGetNextPort (OORTP);
       strcpy(pNewChannel->localIP, call->localIP);
    }
-   
+
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/RTP] ooAddNewLogicalChannel : %s  [%s] %s:%d  "
+              " (%s, %s)\n", 
+              dir , ooGetCapTypeText(epCap->cap),
+              (pNewChannel->localIP)?pNewChannel->localIP:"Null", 
+              pNewChannel->localRtpPort,
+              call->callType, call->callToken);
+ 
    /* Add new channel to the list */
    pNewChannel->next = NULL;
    if(!call->logicalChans) {
@@ -110,7 +122,7 @@ OOLogicalChannel* ooAddNewLogicalChannel(OOH323CallData *call, int channelNo,
    
    /* increment logical channels */
    call->noOfLogicalChannels++;
-   OOTRACEINFO3("Created new logical channel entry (%s, %s)\n", call->callType,
+   OOTRACEAST(OOTRCLVLDBGA,"Created new logical channel entry (%s, %s)\n", call->callType,
                 call->callToken);
    return pNewChannel;
 }
@@ -121,7 +133,7 @@ OOLogicalChannel* ooFindLogicalChannelByLogicalChannelNo(OOH323CallData *call,
    OOLogicalChannel *pLogicalChannel=NULL;
    if(!call->logicalChans)
    {
-      OOTRACEERR3("ERROR: No Open LogicalChannels - Failed "
+      OOTRACEERR3("ERROR: Call->logicalChans == NULL , No Open LogicalChannels - Failed "
                   "FindLogicalChannelByChannelNo (%s, %s\n", call->callType,
                    call->callToken);
       return NULL;
@@ -236,6 +248,16 @@ int ooClearAllLogicalChannels(OOH323CallData *call)
 
    OOTRACEINFO3("Clearing all logical channels (%s, %s)\n", call->callType,
                  call->callToken);
+
+   memFreePtr(call->pctxt,call->localAudioChoice);
+   memFreePtr(call->pctxt,call->localVideoChoice);
+   call->localAudioChoice = NULL ;
+   call->localVideoChoice = NULL ; 
+   memFreePtr(call->pctxt,call->RemoteAudioChoice);
+   memFreePtr(call->pctxt,call->RemoteVideoChoice);
+   call->RemoteAudioChoice = NULL ;
+   call->RemoteVideoChoice = NULL ; 
+   
    
    temp = call->logicalChans;
    while(temp)

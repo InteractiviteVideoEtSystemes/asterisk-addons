@@ -41,86 +41,100 @@ void ooTrace(OOUINT32 traceLevel, const char * fmtspec, ...)
 {
    va_list arglist;
    char logMessage[MAXLOGMSGLEN];
-   if(traceLevel > gs_traceLevel) return;
+
+   if ( !gH323ep.fptraceFile )
+     return ;
+
+   if(traceLevel > gs_traceLevel) 
+     return;
+
    va_start (arglist, fmtspec);
    /*   memset(logMessage, 0, MAXLOGMSGLEN);*/
    vsprintf(logMessage, fmtspec, arglist);   
    va_end(arglist);
    ooTraceLogMessage(logMessage);
+#if 1 // log-> ast
+ if (option_debug > 8 )
+ {
+   ast_verbose(logMessage);
+ }
+#endif
 }
 
 void ooTraceLogMessage(const char * logMessage)
 {
-   char timeString[100];
-   char currtime[3];
-   static int lasttime=25;
-   int printDate =0;
-   static int printTime=1;
-   
+  if ( !gH323ep.fptraceFile )
+    return ;
+  else {
+    char timeString[100];
+    char currtime[3];
+    static int lasttime=25;
+    int printDate =0;
+    static int printTime=1;
+
 #ifdef _WIN32
    
-   SYSTEMTIME systemTime;
-   GetLocalTime(&systemTime);
-   GetTimeFormat(LOCALE_SYSTEM_DEFAULT,0, &systemTime, "HH':'mm':'ss", 
-                                                              timeString, 100);
-   GetTimeFormat(LOCALE_SYSTEM_DEFAULT,0, &systemTime, "H", currtime, 3);
-   if(lasttime> atoi(currtime))
+    SYSTEMTIME systemTime;
+    GetLocalTime(&systemTime);
+    GetTimeFormat(LOCALE_SYSTEM_DEFAULT,0, &systemTime, "HH':'mm':'ss", 
+                  timeString, 100);
+    GetTimeFormat(LOCALE_SYSTEM_DEFAULT,0, &systemTime, "H", currtime, 3);
+    if(lasttime> atoi(currtime))
       printDate=1;
-   lasttime = atoi(currtime);
+    lasttime = atoi(currtime);
    
 #else
-   struct tm *ptime;
-   char dateString[10];
-   time_t t = time(NULL);
-   ptime = localtime(&t);
-   strftime(timeString, 100, "%H:%M:%S", ptime);
-   strftime(currtime, 3, "%H", ptime);
-   if(lasttime>atoi(currtime))
-       printDate = 1;
-   lasttime = atoi(currtime);   
+    struct tm *ptime;
+    char dateString[10];
+    time_t t = time(NULL);
+    ptime = localtime(&t);
+    strftime(timeString, 100, "%H:%M:%S", ptime);
+    strftime(currtime, 3, "%H", ptime);
+    if(lasttime>atoi(currtime))
+      printDate = 1;
+    lasttime = atoi(currtime);   
 #endif
-
       
 #ifdef _WIN32
-   if(printDate)
-   {
+    if(printDate)
+    {
       printDate = 0;
       fprintf(gH323ep.fptraceFile, "---------Date %d/%d/%d---------\n",
-                      systemTime.wMonth, systemTime.wDay, systemTime.wYear);
-   }
-   if(printTime) {
+              systemTime.wMonth, systemTime.wDay, systemTime.wYear);
+    }
+    if(printTime) {
       fprintf(gH323ep.fptraceFile, "%s:%03d  %s", timeString, 
               systemTime.wMilliseconds, logMessage);
-   }
-   else
+    }
+    else
       fprintf(gH323ep.fptraceFile, "%s", logMessage);
    
-   fflush(gH323ep.fptraceFile);
+    fflush(gH323ep.fptraceFile);
 #else
-   if(printDate)
-   {
+    if(printDate)
+    {
       printDate = 0;
       strftime(dateString, 10, "%D", ptime);
       fprintf(gH323ep.fptraceFile, "---------Date %s---------\n", 
               dateString);
-   }
-   if(printTime) {
+    }
+    if(printTime) {
       struct timeval systemTime;
       gettimeofday(&systemTime, NULL);
       fprintf(gH323ep.fptraceFile, "%s:%03ld  %s", timeString, 
-               systemTime.tv_usec/1000, logMessage);
-   }
-   else
+              systemTime.tv_usec/1000, logMessage);
+    }
+    else
       fprintf(gH323ep.fptraceFile, "%s", logMessage);
 
-   fflush(gH323ep.fptraceFile);
+    fflush(gH323ep.fptraceFile);
 #endif
    
-   if(strchr(logMessage, '\n'))
+    if(strchr(logMessage, '\n'))
       printTime = 1;
-   else
+    else
       printTime = 0;
-
+  }
 }
 
 int ooLogAsn1Error(int stat, const char * fname, int lno)

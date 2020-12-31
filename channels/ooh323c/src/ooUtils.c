@@ -38,3 +38,29 @@ OOBOOL ooIsDailedDigit(const char* str)
    }
    return TRUE;
 }
+
+
+OOBOOL ooOidCompare(const ASN1OBJID* obj1, ASN1OBJID *obj2)
+{
+    if ( obj1 != NULL && obj2 != NULL)
+    {
+	int i;
+
+        if (obj1->numids != obj2->numids )
+	    return FALSE;
+
+	for (i=0; i< obj1->numids; i++)
+	{
+	    if (obj1->subid[i] != obj2->subid[i] )
+		return FALSE;
+	}
+	return TRUE;
+    } 
+    else
+    {
+	if (obj1 == NULL && obj2 == NULL)
+	    return TRUE;
+    }
+    return FALSE;
+}
+

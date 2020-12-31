@@ -197,6 +197,7 @@ enum Q931TransferMode {
 enum Q931TransferRate{
   Q931TransferRatePacketMode = 0x00,  /* 00000 */
   Q931TransferRate64Kbps     = 0x10,  /* 10000 */
+  Q931TransferRate64KbpsBaseRate= 0x18,  /* 11000 */
   Q931TransferRate128kbps    = 0x11,  /* 10001 */
   Q931TransferRate384kbps    = 0x13,  /* 10011 */
   Q931TransferRate1536kbps   = 0x15,  /* 10101 */
@@ -511,7 +512,7 @@ EXTERN int ooSendConnect(struct OOH323CallData *call);
  *
  * @return          OO_OK, on success. OO_FAILED, on failure
  */
-EXTERN int ooH323MakeCall(char *dest, char *callToken, ooCallOptions *opts);
+EXTERN int ooH323MakeCall(char *dest, char *callToken, char* chargVectorID, ooCallOptions *opts);
 
 /**
  * Helper function used to make a call once it is approved by the Gk.

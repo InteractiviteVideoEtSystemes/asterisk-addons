@@ -171,6 +171,10 @@ EXTERN OOAliases* ooH323AddAliasToList
  */
 int ooH323GetIpPortFromH225TransportAddress(struct OOH323CallData *call, 
    H225TransportAddress *h225Address, char *ip, int *port);
+
+/* Human representation of call id */
+void ooH323PrintCallId(OOH323CallData *call);
+
 /**
  * @}
  */

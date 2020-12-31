@@ -549,6 +549,14 @@ EXTERN int ooGkClientUpdateRegisteredAliases
  */
 int ooGkClientSetCallbacks
    (ooGkClient *pGkClient, OOGKCLIENTCALLBACKS callbacks);
+
+EXTERN int ooGkClientReInit(ooGkClient *pGkClient);
+
+EXTERN void ooGkClientFillVendor (ooGkClient *pGkClient, H225VendorIdentifier *pVendor );
+
+#ifndef _COMPACT
+void ooGkClientPrintMessage  (ooGkClient *pGkClient, ASN1OCTET *msg, ASN1UINT len);
+#endif
 /** 
  * @} 
  */

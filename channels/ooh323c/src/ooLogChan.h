@@ -57,6 +57,7 @@ typedef struct OOLogicalChannel {
    int  remoteMediaControlPort;
    int  localRtpPort;
    int  localRtcpPort;
+   int  rtpPayloadType;
    char localIP[20];
    OOLogicalChannelState state;         
    struct ooH323EpCapability *chanCap;

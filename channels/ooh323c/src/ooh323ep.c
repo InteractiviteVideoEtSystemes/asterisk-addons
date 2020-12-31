@@ -35,26 +35,24 @@ int ooH323EpInitialize
    initContext(&(gH323ep.ctxt));
    initContext(&(gH323ep.msgctxt));
 
-   if(tracefile)
+   if ( tracefile != NULL && strncasecmp( tracefile , DEFAULT_TRACEFILE , 4 ) != 0 )
    {
-      if(strlen(tracefile)>= MAXFILENAME)
-      {
-         printf("Error:File name longer than allowed maximum %d\n", 
-                 MAXFILENAME-1);
-         return OO_FAILED;
-      }
-      strcpy(gH323ep.traceFile, tracefile);
-   }
-   else{
-      strcpy(gH323ep.traceFile, DEFAULT_TRACEFILE);      
-   }
-
-   gH323ep.fptraceFile = fopen(gH323ep.traceFile, "w");
-   if(gH323ep.fptraceFile == NULL)
-   {
-      printf("Error:Failed to open trace file %s for write.\n", 
-                  gH323ep.traceFile);
-      return OO_FAILED;
+     OOTRACEAST(OOTRCLVLWARN,"Open h323 stack trace[%s]\n",tracefile);
+     if(strlen(tracefile)>= MAXFILENAME)
+     {
+       printf("Error:File name longer than allowed maximum %d\n", MAXFILENAME-1);
+       return OO_FAILED;
+     }
+     strcpy(gH323ep.traceFile, tracefile);
+     
+     gH323ep.fptraceFile = fopen(gH323ep.traceFile, "w");
+     if(gH323ep.fptraceFile == NULL)
+     {
+       printf("Error:Failed to open trace file %s for write.\n",  gH323ep.traceFile);
+       return OO_FAILED;
+     }
+   }else{
+     gH323ep.fptraceFile == NULL ;
    }
 
    /* Initialize default port ranges that will be used by stack. 
@@ -136,7 +134,8 @@ EXTERN int ooH323EpSetAsGateway()
 }
 
 
-int ooH323EpSetLocalAddress(const char* localip, int listenport)
+int ooH323EpSetLocalAddress(const char* localip, int listenport, const char * externalIp , const char * internalNet )
+//int ooH323EpSetLocalAddress(const char* localip, int listenport )
 {
    if(localip)
    {
@@ -149,6 +148,19 @@ int ooH323EpSetLocalAddress(const char* localip, int listenport)
       gH323ep.listenPort = listenport;
       OOTRACEINFO2("Listen port number is set to %d\n", listenport);
    }
+
+
+   if(externalIp)
+   {
+      strcpy(gH323ep.externalIp, externalIp);
+      OOTRACEINFO2("Advertised IP address is set to %s\n", externalIp);
+   }
+#if 0
+   if(internalNet)
+   {
+      OOTRACEINFO2("Internal net is set to %s\n", internalNet);
+   }
+#endif
    return OO_OK;
 }
 
@@ -257,6 +269,13 @@ int ooH323EpAddAliasEmailID(const char * email)
    return OO_OK;
 }
 
+int ooH323EpSetmanufacturerCode(int manufacturerCode)
+{
+   gH323ep.manufacturerCode = manufacturerCode;
+   OOTRACEDBGA2("Added  manufacturerCode- %d\n",manufacturerCode );
+   return OO_OK;
+}
+
 int ooH323EpAddAliasTransportID(const char * ipaddress)
 {
    ooAliases * psNewAlias=NULL;
@@ -323,7 +342,8 @@ int ooH323EpSetH323Callbacks(OOH323CALLBACKS h323Callbacks)
    gH323ep.h323Callbacks.onCallCleared = h323Callbacks.onCallCleared;
    gH323ep.h323Callbacks.openLogicalChannels = h323Callbacks.openLogicalChannels;
    gH323ep.h323Callbacks.onReceivedDTMF = h323Callbacks.onReceivedDTMF;
-   return OO_OK;
+   gH323ep.h323Callbacks.onReceivedMiscellaneous = h323Callbacks.onReceivedMiscellaneous;
+  return OO_OK;
 }
 
 int ooH323EpDestroy(void)
@@ -445,8 +465,13 @@ int ooH323EpDisableH245Tunneling(void)
 
 int ooH323EpSetTermType(int value)
 {
-   gH323ep.termType = value;
-   return OO_OK;
+  if ( value > 1 && value <= 240 ){
+    OOTRACEINFO2("Setting terminal type : %d\n", value);
+    gH323ep.termType = value;
+  }
+  else
+    OOTRACEINFO2("Bad value to setting terminal type : %d\n", value);
+  return OO_OK;
 }
 
 int ooH323EpSetProductID (const char* productID)
@@ -511,7 +536,7 @@ void ooH323EpPrintConfig(void)
 {
    OOTRACEINFO1("H.323 Endpoint Configuration is as follows:\n");
    
-   OOTRACEINFO2("\tTrace File: %s\n", gH323ep.traceFile);
+   OOTRACEINFO2("\tTrace File: %s\n", gH323ep.traceFile?gH323ep.traceFile:"null");
 
    if(!OO_TESTFLAG(gH323ep.flags, OO_M_FASTSTART))
    {
@@ -538,9 +563,13 @@ void ooH323EpPrintConfig(void)
    }
 
    if(OO_TESTFLAG(gH323ep.flags, OO_M_AUTOANSWER))
+   {
       OOTRACEINFO1("\tAutoAnswer - enabled\n");
+   }
    else
+   {
       OOTRACEINFO1("\tAutoAnswer - disabled\n");
+   }
      
    OOTRACEINFO2("\tTerminal Type - %d\n", gH323ep.termType);
 
@@ -574,6 +603,8 @@ void ooH323EpPrintConfig(void)
                    gH323ep.logicalChannelTimeout);
 
    OOTRACEINFO2("\tSession Timeout - %d seconds\n", gH323ep.sessionTimeout);
+
+   ooShowMSDConfig();
 
    return;   
 }
@@ -658,6 +689,20 @@ int ooH323EpAddH263VideoCapability(int cap, unsigned sqcifMPI,
 
 }
 
+int ooH323EpAddH264VideoCapability(int cap, unsigned profile,
+                                 unsigned constraint, unsigned level,
+                                 unsigned maxBitRate, int dir,
+                                 cb_StartReceiveChannel startReceiveChannel,
+                                 cb_StartTransmitChannel startTransmitChannel,
+                                 cb_StopReceiveChannel stopReceiveChannel,
+                                 cb_StopTransmitChannel stopTransmitChannel)
+{
+   return ooCapabilityAddH264VideoCapability(NULL, profile,
+                                 constraint, level,
+                                 maxBitRate, dir,
+                                 startReceiveChannel, startTransmitChannel,
+                                 stopReceiveChannel, stopTransmitChannel, FALSE);
+}
 
 int ooH323EpEnableDTMFRFC2833(int dynamicRTPPayloadType)
 {
@@ -735,7 +780,8 @@ int ooH323EpSetTCPPortRange(int base, int max)
    }
    gH323ep.tcpPorts.current = gH323ep.tcpPorts.start;
         
-   OOTRACEINFO1("TCP port range initialize - successful\n");
+   OOTRACEINFO3("TCP port range initialize - successful %d - %d \n",
+                 gH323ep.tcpPorts.start,gH323ep.tcpPorts.max);
    return OO_OK;
 }
 

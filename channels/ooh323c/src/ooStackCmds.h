@@ -65,7 +65,8 @@ typedef enum OOStackCmdID {
    OO_CMD_HANGCALL,          /*!< Terminate call */
    OO_CMD_SENDDIGIT,         /*!< Send dtmf */
    OO_CMD_MANUALRINGBACK,    /*!< Send Alerting - ringback */
-   OO_CMD_STOPMONITOR        /*!< Stop the event monitor */
+   OO_CMD_STOPMONITOR,       /*!< Stop the event monitor */
+   OO_CMD_FASTUPDATEREQ      /*!< Video Fast Update Request */
    
 } OOStackCmdID;
 
@@ -78,6 +79,7 @@ typedef struct OOStackCommand {
    void* param1;
    void* param2;
    void* param3;
+   void* param4;
 } OOStackCommand;
 
 #define ooCommand OOStackCommand;
@@ -93,7 +95,7 @@ typedef struct OOStackCommand {
  * @return            Returns OOStkCmdStat value indication success or failure.
  */
 EXTERN OOStkCmdStat ooMakeCall 
-   (const char* dest, char *callToken, size_t bufsiz, ooCallOptions *opts);
+   (const char* dest, char *callToken, const char* chargVectorID, size_t bufsiz, ooCallOptions *opts);
 
 
 
@@ -143,6 +145,17 @@ EXTERN OOStkCmdStat ooHangCall(const char* callToken, OOCallClearReason reason);
  */
 EXTERN OOStkCmdStat ooSendDTMFDigit(const char *callToken, const char* alpha);
 
+/**
+ * This command function can be used by an user application to send an H.245
+ * FastUpdateRequest (IVeS)
+ * @param callToken  Unique token for the call
+ * @param first      First group of picture to refresh. -1 = no parameter
+ * @param nbgob      Number of gob to refresh, -1 = no parameter
+ *
+ *
+ * @return            Returns OOStkCmdStat value indication success or failure.
+ */
+EXTERN OOStkCmdStat ooSendFastUpdateRequest(const char *callToken, int first, int nbgob);
 
 /**
  * This function is used by the user application to stop stack thread.

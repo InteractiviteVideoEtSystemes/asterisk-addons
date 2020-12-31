@@ -44,9 +44,11 @@ int ooGenerateOutgoingCallToken (char *callToken, size_t size)
 
 
 OOStkCmdStat ooMakeCall 
-   (const char* dest, char* callToken, size_t bufsiz, ooCallOptions *opts)
+   (const char* dest, char* callToken, const char* chargVectorID, size_t bufsiz, ooCallOptions *opts)
 {
    OOStackCommand cmd;
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command MakeCall %s  CV[%s]\n",
+              (dest)?dest:"NULL", (chargVectorID)?chargVectorID:"NULL" );
 
    if(!callToken)
       return OO_STKCMD_INVALIDPARAM;
@@ -82,19 +84,37 @@ OOStkCmdStat ooMakeCall
    
    strcpy((char*)cmd.param2, callToken);
 
+   if ( chargVectorID )
+   {
+     cmd.param3 = (void*) malloc(OO_PCV_CID_SIZE);
+     if(!cmd.param3)
+     {
+       free(cmd.param1);
+       free(cmd.param2);
+       return OO_STKCMD_MEMERR;
+     }
+   
+     memcpy((char*)cmd.param3, chargVectorID,OO_PCV_CID_SIZE);
+   }
+   else
+   {
+     cmd.param3 = NULL ; 
+   }
+
    if(!opts)
    {
-      cmd.param3 = 0;
+      cmd.param4 = 0;
    }
    else {
-      cmd.param3 = (void*) malloc(sizeof(ooCallOptions));
-      if(!cmd.param3)
+      cmd.param4 = (void*) malloc(sizeof(ooCallOptions));
+      if(!cmd.param4)
       {
          free(cmd.param1);
          free(cmd.param2);
+         free(cmd.param3);
          return OO_STKCMD_MEMERR;
       }
-      memcpy((void*)cmd.param3, opts, sizeof(ooCallOptions));
+      memcpy((void*)cmd.param4, opts, sizeof(ooCallOptions));
    }
 
    if(ooWriteStackCommand(&cmd) != OO_OK)
@@ -112,6 +132,10 @@ OOStkCmdStat ooMakeCall
 OOStkCmdStat ooManualRingback(const char *callToken)
 {
    OOStackCommand cmd;
+
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command Manual RingBack (%s) \n",
+              (callToken)?callToken:"NULL");
+
    if(!callToken)
    {
       return OO_STKCMD_INVALIDPARAM;
@@ -144,6 +168,9 @@ OOStkCmdStat ooManualRingback(const char *callToken)
 OOStkCmdStat ooAnswerCall(const char *callToken)
 {
    OOStackCommand cmd;
+
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command AnswerCall (%s) \n",
+              (callToken)?callToken:"NULL");
 
    if(!callToken)
    {
@@ -179,6 +206,9 @@ OOStkCmdStat ooForwardCall(const char* callToken, char *dest)
 {
    OOStackCommand cmd;
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command Forward Call (%s) \n",
+              (callToken)?callToken:"NULL");
+   
    if(!callToken || !dest)
    {
       return OO_STKCMD_INVALIDPARAM;
@@ -219,6 +249,9 @@ OOStkCmdStat ooHangCall(const char* callToken, OOCallClearReason reason)
 {
    OOStackCommand cmd;
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command Hangup Call (%s) \n",
+              (callToken)?callToken:"NULL");
+
    if(!callToken)
    {
       return OO_STKCMD_INVALIDPARAM;
@@ -258,6 +291,8 @@ OOStkCmdStat ooStopMonitor()
 {
    OOStackCommand cmd;
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command Stop Monitor \n");
+
    if(gCmdChan == 0)
    {
       if(ooCreateCmdConnection() != OO_OK)
@@ -277,6 +312,9 @@ OOStkCmdStat ooSendDTMFDigit(const char *callToken, const char* dtmf)
 {
    OOStackCommand cmd;
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  Send Command DTMF (%s) \n",
+              (callToken)?callToken:"NULL");
+   
    if(!callToken)
    {
       return OO_STKCMD_INVALIDPARAM;
@@ -312,7 +350,50 @@ OOStkCmdStat ooSendDTMFDigit(const char *callToken, const char* dtmf)
    return OO_STKCMD_SUCCESS;
 }
 
+OOStkCmdStat ooSendFastUpdateRequest(const char *callToken, int first, int nbgob)
+{
+   OOStackCommand cmd;
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/CMD] >>  call (%s) Send fast update request CMD.\n",
+              (callToken)?callToken:"NULL");
+
+   if(!callToken)
+   {
+      return OO_STKCMD_INVALIDPARAM;
+   }
+
+   if(gCmdChan == 0)
+   {
+      if(ooCreateCmdConnection() != OO_OK)
+         return OO_STKCMD_CONNECTIONERR;
+   }
+
+   memset(&cmd, 0, sizeof(OOStackCommand));
+   cmd.type = OO_CMD_FASTUPDATEREQ;
+
+   cmd.param1 = (void*) malloc(strlen(callToken)+1);
+   cmd.param2 = (void*) malloc(sizeof ( int ) );
+   cmd.param3 = (void*) malloc(sizeof ( int ) );
+
+   if(!cmd.param1 || !cmd.param2 || !cmd.param3 )
+   {
+      if(cmd.param1)   free(cmd.param1); /* Release memory */
+      if(cmd.param2)   free(cmd.param2); /* Release memory */
+      if(cmd.param3)   free(cmd.param3); /* Release memory */
+     return OO_STKCMD_MEMERR;
+   }
+
+   strcpy((char*) cmd.param1, callToken);
+   (* (int *)cmd.param2) = first;
+   (* (int *)cmd.param3) = nbgob;
+
+   if(ooWriteStackCommand(&cmd) != OO_OK)
+   {
+      return OO_STKCMD_WRITEERR;
+   }
+
+   return OO_STKCMD_SUCCESS;
+}
 const char* ooGetStkCmdStatusCodeTxt(OOStkCmdStat stat)
 {
    switch(stat)

@@ -19,9 +19,38 @@
  * This file defines the trace functionality
  */
 #include "ooCommon.h"
+
+
 #ifndef _OOTRACE_H_
 #define _OOTRACE_H_
 
+#define ASTERISK_BUILD 1
+
+#ifdef ASTERISK_BUILD
+#include <asterisk/logger.h>
+#include <asterisk/options.h>
+
+
+#define OOTRACEAST( traceLevel , ... )          \
+  {                                             \
+    switch (traceLevel  )                       \
+    {                                           \
+      case OOTRCLVLERR :                        \
+        ast_log(LOG_ERROR , __VA_ARGS__ );      \
+        break ;                                 \
+      case OOTRCLVLWARN :                       \
+        ast_log(LOG_WARNING , __VA_ARGS__ );    \
+        break ;                                 \
+      default :                                 \
+        if (option_debug > 2 )                  \
+          ast_log(LOG_DEBUG , __VA_ARGS__ );    \
+        break ;                                 \
+    }                                           \
+    ooTrace ( traceLevel , __VA_ARGS__ );       \
+  }
+#else
+#define OOTRACEAST( traceLevel , ... ) ooTrace( traceLevel , __VA_ARGS__ )
+#endif
 
 /* tracing */
 #define OOTRCLVLERR  1
@@ -52,6 +81,22 @@
 #define TRACELVL 1
 #endif
 
+#ifdef ASTERISK_BUILD
+#define OOTRACEERR1(a)            OOTRACEAST(OOTRCLVLERR,a)
+#define OOTRACEERR2(a,b)          OOTRACEAST(OOTRCLVLERR,a,b)
+#define OOTRACEERR3(a,b,c)        OOTRACEAST(OOTRCLVLERR,a,b,c)
+#define OOTRACEERR4(a,b,c,d)      OOTRACEAST(OOTRCLVLERR,a,b,c,d)
+#define OOTRACEWARN1(a)           OOTRACEAST(OOTRCLVLWARN,a)
+#define OOTRACEWARN2(a,b)         OOTRACEAST(OOTRCLVLWARN,a,b)
+#define OOTRACEWARN3(a,b,c)       OOTRACEAST(OOTRCLVLWARN,a,b,c)
+#define OOTRACEWARN4(a,b,c,d)     OOTRACEAST(OOTRCLVLWARN,a,b,c,d)
+#define OOTRACEINFO1(a)           OOTRACEAST(OOTRCLVLINFO, a)
+#define OOTRACEINFO2(a,b)         OOTRACEAST(OOTRCLVLINFO,a,b)
+#define OOTRACEINFO3(a,b,c)       OOTRACEAST(OOTRCLVLINFO,a,b,c)
+#define OOTRACEINFO4(a,b,c,d)     OOTRACEAST(OOTRCLVLINFO,a,b,c,d)
+#define OOTRACEINFO5(a,b,c,d,e)   OOTRACEAST(OOTRCLVLINFO,a,b,c,d,e)
+#define OOTRACEINFO6(a,b,c,d,e,f) OOTRACEAST(OOTRCLVLINFO,a,b,c,d,e, f)
+#else
 #define OOTRACEERR1(a)        ooTrace(OOTRCLVLERR,a)
 #define OOTRACEERR2(a,b)      ooTrace(OOTRCLVLERR,a,b)
 #define OOTRACEERR3(a,b,c)    ooTrace(OOTRCLVLERR,a,b,c)
@@ -66,6 +111,8 @@
 #define OOTRACEINFO4(a,b,c,d) ooTrace(OOTRCLVLINFO,a,b,c,d)
 #define OOTRACEINFO5(a,b,c,d,e) ooTrace(OOTRCLVLINFO,a,b,c,d,e)
 #define OOTRACEINFO6(a,b,c,d,e,f) ooTrace(OOTRCLVLINFO,a,b,c,d,e, f)
+#endif
+
 #ifndef _COMPACT 
 #define OOTRACEDBGA1(a)       ooTrace(OOTRCLVLDBGA,a)
 #define OOTRACEDBGA2(a,b)     ooTrace(OOTRCLVLDBGA,a,b)

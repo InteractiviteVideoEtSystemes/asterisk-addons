@@ -4133,7 +4133,8 @@ EXTERN int asn1PD_H245GenericCapability (OOCTXT* pctxt, H245GenericCapability* p
       stat = decodeConsUnsigned (pctxt, &pvalue->maxBitRate, 0U, ASN1UINT_MAX);
       if (stat != ASN_OK) return stat;
       invokeUIntValue (pctxt, pvalue->maxBitRate);
-
+      // H323 maxBitRate given on xx X 100 b/s 
+      pvalue->maxBitRate = pvalue->maxBitRate*100 ;
       invokeEndElement (pctxt, "maxBitRate", -1);
    }
 
@@ -10403,7 +10404,8 @@ EXTERN int asn1PD_H245H263VideoCapability (OOCTXT* pctxt, H245H263VideoCapabilit
    stat = decodeConsUnsigned (pctxt, &pvalue->maxBitRate, 1U, 192400U);
    if (stat != ASN_OK) return stat;
    invokeUIntValue (pctxt, pvalue->maxBitRate);
-
+   // H323 maxBitRate given on xx X 100 b/s 
+   pvalue->maxBitRate = pvalue->maxBitRate*100 ;
    invokeEndElement (pctxt, "maxBitRate", -1);
 
    /* decode unrestrictedVector */

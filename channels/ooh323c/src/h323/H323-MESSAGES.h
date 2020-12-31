@@ -79,10 +79,10 @@ EXTERN int asn1PD_H225TBCD_STRING (OOCTXT* pctxt, H225TBCD_STRING* pvalue);
 /*  GloballyUniqueID                                          */
 /*                                                            */
 /**************************************************************/
-
+#define STR_SIZE_GLOBAL_UNIQUE_ID 16
 typedef struct EXTERN H225GloballyUniqueID {
    ASN1UINT numocts;
-   ASN1OCTET data[16];
+   ASN1OCTET data[STR_SIZE_GLOBAL_UNIQUE_ID];
 } H225GloballyUniqueID;
 
 EXTERN int asn1PE_H225GloballyUniqueID (OOCTXT* pctxt, H225GloballyUniqueID* pvalue);

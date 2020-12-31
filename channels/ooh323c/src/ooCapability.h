@@ -31,7 +31,12 @@
 #define OORXTX    (1<<3) /* For symmetric capabilities */
 /* Various types of caps. Note that not all 
    supported */
-typedef enum OOCapabilities{
+
+#define OO_DEFAULT_H264_PROFILE 0x40 // profile 64 base line h264   
+#define OO_DEFAULT_H264_LEVEL   0x47 // level h264 31 == level 71 h241   
+#define OO_DEFAULT_H264_MAXBR   2048000U 
+
+typedef enum {
    OO_CAP_AUDIO_BASE      = 0,
    OO_G711ALAW64K         = 2,
    OO_G711ALAW56K         = 3,
@@ -110,6 +115,13 @@ typedef struct OOH263CapParams {
    unsigned MPI; /* !< Minimum Picture Interval */
   unsigned maxBitRate; /* !< Maximum bit rate for transmission/reception in units of 100 bits/sec */
 } OOH263CapParams;
+
+typedef struct OOH264CapParams {
+  unsigned maxBitRate; /* !< Maximum bit rate for transmission/reception in units of 100 bits/sec */
+  unsigned profile;
+  unsigned constraint;
+  unsigned level;
+} OOH264CapParams;
 
 struct OOH323CallData;
 struct OOLogicalChannel;
@@ -419,6 +431,14 @@ int ooCapabilityAddH263VideoCapability_helper(struct OOH323CallData *call,
                               cb_StopTransmitChannel stopTransmitChannel, 
                               OOBOOL remote);
 
+int ooCapabilityAddH264VideoCapability(struct OOH323CallData *call,
+                              unsigned profile, unsigned constraint,
+                              unsigned level, unsigned maxBitRate, int dir,
+                              cb_StartReceiveChannel startReceiveChannel,
+                              cb_StartTransmitChannel startTransmitChannel,
+                              cb_StopReceiveChannel stopReceiveChannel,
+                              cb_StopTransmitChannel stopTransmitChannel,
+                              OOBOOL remote);
 /**
  * This function is used to add a audio capability to calls remote  
  * capability list.
@@ -432,6 +452,9 @@ int ooCapabilityAddH263VideoCapability_helper(struct OOH323CallData *call,
 int ooAddRemoteAudioCapability(struct OOH323CallData *call,
                                H245AudioCapability *audioCap, int dir);
 
+
+int ooAddRemoteVideoCapability(struct OOH323CallData *call,
+                               H245VideoCapability *videoCap, int dir);
 
 /**
  * This function is used to add a capability to call's remote  capability list.
@@ -594,6 +617,21 @@ struct H245AudioCapability* ooCapabilityCreateSimpleCapability
  *                    failure.
  */
 struct H245VideoCapability* ooCapabilityCreateH263VideoCapability
+(ooH323EpCapability *epCap, OOCTXT* pctxt, int dir);
+
+/**
+ * This function is used to create a H.264 (Generic) video capability 
+ * structure.
+ * @param epCap       Handle to the endpoint capability
+ * @param pctxt       Handle to OOCTXT which will be used to allocate memory 
+ *                    for new video capability.
+ * @param dir         Direction in which the newly created capability will be 
+ *                    used.
+ *
+ * @return            Newly created video capability on success, NULL on 
+ *                    failure.
+ */
+struct H245VideoCapability* ooCapabilityCreateGenericVideoCapability
 (ooH323EpCapability *epCap, OOCTXT* pctxt, int dir);
 
 

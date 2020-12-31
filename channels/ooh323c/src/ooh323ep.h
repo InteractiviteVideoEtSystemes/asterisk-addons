@@ -25,11 +25,11 @@
 #include "ooports.h"
 #include "ooq931.h"
 
-#define DEFAULT_TRACEFILE "trace.log"
-#define DEFAULT_TERMTYPE 50
+#define DEFAULT_TRACEFILE "none"
+#define DEFAULT_TERMTYPE 240
 #define DEFAULT_PRODUCTID  "objsys"
 #define DEFAULT_CALLERID   "objsyscall"
-#define DEFAULT_T35COUNTRYCODE 1
+#define DEFAULT_T35COUNTRYCODE 181
 #define DEFAULT_T35EXTENSION 0
 #define DEFAULT_MANUFACTURERCODE 71
 #define DEFAULT_H245CONNECTION_RETRYTIMEOUT 2
@@ -39,7 +39,8 @@
 #define DEFAULT_LOGICALCHAN_TIMEOUT 30
 #define DEFAULT_ENDSESSION_TIMEOUT 15
 #define DEFAULT_H323PORT 1720
-
+#define DEFAULT_MAX_WAIT_TIME_TO_CONNECT 20
+#define DEFAULT_MAX_CONNECT_RETRY 5
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -130,6 +131,9 @@ typedef struct OOH323EndPoint {
    int noOfCaps;
    OOH225MsgCallbacks h225Callbacks;
    OOH323CALLBACKS h323Callbacks;
+   char externalIp[20];
+   unsigned long internalNet;
+   unsigned long internalNetmask;
    char signallingIP[20];
    int listenPort;
    OOSOCKET *listener;
@@ -170,17 +174,20 @@ EXTERN int ooH323EpInitialize
  *
  * @return               OO_OK, on success. OO_FAILED, on failure.
  */
-EXTERN int ooH323EpSetAsGateway();
+EXTERN int ooH323EpSetAsGateway(void);
 
 /**
  * This function is used to assign a local ip address to be used for call
  * signalling.
  * @param localip        Dotted IP address to be used for call signalling.
  * @param listenport     Port to be used for listening for incoming calls.
+ * @param externalIp     Address to signal if outside the internal network
+ * @param internalNet    Description of internal network
  *
  * @return               OO_OK, on success. OO_FAILED, on failure.
  */ 
-EXTERN int ooH323EpSetLocalAddress(const char* localip, int listenport);
+EXTERN int ooH323EpSetLocalAddress(const char* localip, int listenport, const char * externalIp , const char * internalNet );
+//EXTERN int ooH323EpSetLocalAddress(const char* localip, int listenport );
 
 /**
  * This function is used to set the range of tcp ports the application will
@@ -270,6 +277,14 @@ EXTERN int ooH323EpAddAliasTransportID(const char* ipaddress);
 EXTERN int ooH323EpClearAllAliases(void);
 
 /**
+ * This function is used to clear all the aliases used by the 
+ * H323 endpoint.
+ *
+ * @return               OO_OK, on success. OO_FAILED, on failure.
+ */
+EXTERN int ooH323EpSetmanufacturerCode(int manufacturerCode);
+
+/**
  * This function is used to set the H225 message callbacks for the
  * endpoint.
  * @param h225Callbacks  Callback structure containing various callbacks.
@@ -341,13 +356,7 @@ EXTERN int ooH323EpDisableManualRingback(void);
  * @return            OO_OK, on success. OO_FAILED, on failure.
  */
 EXTERN int ooH323EpDisableMediaWaitForConnect(void);
-
-/**
- * This function is used to disable MediaWaitForConnect.
- *
- * @return            OO_OK, on success. OO_FAILED, on failure.
- */
-EXTERN int ooH323EpDisableMediaWaitForConnect(void);
+EXTERN int ooH323EpEnableMediaWaitForConnect(void);
 
 /**
  * This function is used to enable faststart.
@@ -569,6 +578,14 @@ EXTERN int ooH323EpAddH263VideoCapability(int cap, unsigned sqcifMPI,
                                  cb_StopReceiveChannel stopReceiveChannel,
                                  cb_StopTransmitChannel stopTransmitChannel);
 
+EXTERN int ooH323EpAddH264VideoCapability(int cap, unsigned profile,
+                                 unsigned constraint, unsigned level,
+                                 unsigned maxBitRate, int dir,
+                                 cb_StartReceiveChannel startReceiveChannel,
+                                 cb_StartTransmitChannel startTransmitChannel,
+                                 cb_StopReceiveChannel stopReceiveChannel,
+                                 cb_StopTransmitChannel stopTransmitChannel);
+
 /**
  * This function is used to enable rfc 2833 support for the endpoint.
  * @param dynamicRTPPayloadType   Payload type value to use.
@@ -589,28 +606,28 @@ EXTERN int ooH323EpDisableDTMFRFC2833(void);
  * the endpoint.
  * @return                        OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooH323EpEnableDTMFH245Alphanumeric();
+EXTERN int ooH323EpEnableDTMFH245Alphanumeric(void);
 
 /**
  * This function is used to disable the H245(alphanumeric) dtmf capability for
  * the endpoint.
  * @return                        OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooH323EpDisableDTMFH245Alphanumeric();
+EXTERN int ooH323EpDisableDTMFH245Alphanumeric(void);
 
 /**
  * This function is used to enable the H245(signal) dtmf capability for
  * the endpoint.
  * @return                        OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooH323EpEnableDTMFH245Signal();
+EXTERN int ooH323EpEnableDTMFH245Signal(void);
 
 /**
  * This function is used to disable the H245(signal) dtmf capability for
  * the endpoint.
  * @return                        OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooH323EpDisableDTMFH245Signal();
+EXTERN int ooH323EpDisableDTMFH245Signal(void);
 
 /**
  * This function is used to add callbacks to the gatekeeper client. If user
@@ -623,6 +640,9 @@ EXTERN int ooH323EpDisableDTMFH245Signal();
  * @return                       OO_OK, on success. OO_FAILED, on failure.
  */
 EXTERN int ooH323EpSetGkClientCallbacks(OOGKCLIENTCALLBACKS gkClientCallbacks);
+
+EXTERN int ooH323EpSetTermType(int value);
+
 
 /**
  * @}

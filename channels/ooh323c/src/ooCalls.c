@@ -29,10 +29,33 @@
 /** Global endpoint structure */
 extern OOH323EndPoint gH323ep;
 
+#define IVeS_isallowed(c) (isalnum(c)||(c=='_')||(c=='@')||(c=='.')||(c=='-'))
+
+void IVeS_strcpy(char *p_dst, const char *p_src)
+{
+  char *s;
+  char *d;
+
+  s = (char *)p_src;
+  d = p_dst;
+  while ((*s) != '\0')
+  {
+    if (IVeS_isallowed(*s))
+    {
+      *d = *s;
+      d++;
+    }
+    s++;
+  }
+  *d = '\0';
+}
+
 OOH323CallData* ooCreateCall(char* type, char*callToken)
 {
    OOH323CallData *call=NULL;
    OOCTXT *pctxt=NULL;
+
+   OOTRACEAST(OOTRCLVLDBGA,"[H323]  Create new call :%s\n",type);   
 
    pctxt = newContext();
    if(!pctxt)
@@ -62,7 +85,7 @@ OOH323CallData* ooCreateCall(char* type, char*callToken)
    
    memset(&call->callIdentifier, 0, sizeof(H225CallIdentifier));
    memset(&call->confIdentifier, 0, sizeof(H225ConferenceIdentifier));
-
+   memset(&call->chargVectorID,0 , OO_PCV_CID_SIZE );
    call->flags = 0;
    if (OO_TESTFLAG(gH323ep.flags, OO_M_TUNNELING))
       OO_SETFLAG (call->flags, OO_M_TUNNELING);
@@ -133,15 +156,18 @@ OOH323CallData* ooCreateCall(char* type, char*callToken)
    call->ourCaps = NULL;
    call->remoteCaps = NULL;
    call->jointCaps = NULL;
+   call->localAudioChoice = NULL;
+   call->localVideoChoice = NULL;
    dListInit(&call->remoteFastStartOLCs);
    call->remoteTermCapSeqNo =0;
    call->localTermCapSeqNo = 0;
    memcpy(&call->capPrefs, &gH323ep.capPrefs, sizeof(OOCapPrefs));    
    call->logicalChans = NULL;
+   // call->haveSendOLC = FALSE ;
    call->noOfLogicalChannels = 0;
-   call->logicalChanNoBase = 1001;
-   call->logicalChanNoMax = 1100;
-   call->logicalChanNoCur = 1001;
+   call->logicalChanNoBase = 1;
+   call->logicalChanNoMax = 100;
+   call->logicalChanNoCur = 1;
    call->nextSessionID = 4; /* 1,2,3 are reserved for audio, video and data */
    dListInit(&call->timerList);
    call->msdRetries = 0;
@@ -160,11 +186,13 @@ int ooAddCallToList(OOH323CallData *call)
 {
    if(!gH323ep.callList)
    {
+      OOTRACEAST(OOTRCLVLDBGA,"ooAddCallToList : add first call [0x%X]\n",call);
       gH323ep.callList = call;
       call->next = NULL;
       call->prev = NULL;
    }
    else{
+      OOTRACEAST(OOTRCLVLDBGA,"ooAddCallToList : insert call [0x%X]\n",call);
       call->next = gH323ep.callList;
       call->prev = NULL;
       gH323ep.callList->prev = call;
@@ -206,7 +234,8 @@ int ooEndCall(OOH323CallData *call)
 
    if(!call->pH225Channel || call->pH225Channel->sock ==0)
    {
-      call->callState = OO_CALL_CLEARED;
+     OOTRACEAST(OOTRCLVLDBGA,"ooEndCall upd callState[CLEARED]\n");
+     call->callState = OO_CALL_CLEARED;
    }
    else{
       if(!OO_TESTFLAG(call->flags, OO_M_RELEASE_BUILT))   
@@ -230,6 +259,7 @@ int ooRemoveCallFromList (OOH323CallData *call)
    if(!call)
       return OO_OK;
 
+   OOTRACEAST(OOTRCLVLDBGA,"Remove call 0x%X \n",call);
    if(call == gH323ep.callList)
    {
       if(!call->next)
@@ -251,7 +281,7 @@ int ooCleanCall(OOH323CallData *call)
 {
    OOCTXT *pctxt;
 
-   OOTRACEWARN4 ("Cleaning Call (%s, %s)- reason:%s\n", 
+   OOTRACEAST(OOTRCLVLDBGA,"Cleaning Call (%s, %s)- reason:%s\n", 
                  call->callType, call->callToken, 
                  ooGetReasonCodeText (call->callEndReason));
 
@@ -329,7 +359,14 @@ int ooCallSetCallerId(OOH323CallData* call, const char* callerid)
    return OO_OK;
 }
 
-int ooCallSetCallingPartyNumber(OOH323CallData *call, const char *number)
+int ooCallSetBearerCapabilityCircuitMode(OOH323CallData *call, const int CircuitMode)
+{
+   if(!call ) return OO_FAILED;
+   call->BearerCapabilityTransferMode=(CircuitMode==Q931TransferCircuitMode)?Q931TransferCircuitMode:Q931TransferPacketMode;
+   return OO_OK;
+}
+
+int ooCallSetCallingPartyNumber(OOH323CallData *call, const char *number, int callingPartyNumberType, int addVp200)
 {
    if(call->callingPartyNumber) 
       memFreePtr(call->pctxt, call->callingPartyNumber);
@@ -337,7 +374,9 @@ int ooCallSetCallingPartyNumber(OOH323CallData *call, const char *number)
    call->callingPartyNumber = (char*) memAlloc(call->pctxt, strlen(number)+1);
    if(call->callingPartyNumber)
    {
-     strcpy(call->callingPartyNumber, number);
+     /* IVeS: remove non alphanum digits if any (may corrupt SIP messages) */
+     /* strcpy(call->callingPartyNumber, number); */
+     IVeS_strcpy(call->callingPartyNumber, number);
    }
    else{
       OOTRACEERR3("Error:Memory - ooCallSetCallingPartyNumber - "
@@ -345,6 +384,8 @@ int ooCallSetCallingPartyNumber(OOH323CallData *call, const char *number)
                   call->callToken);
       return OO_FAILED;
    }
+   call->callingPartyNumberType = callingPartyNumberType;
+   call->addVp200Info = addVp200;
    /* Set dialed digits alias */
    /*   if(!strcmp(call->callType, "outgoing"))
    {
@@ -376,7 +417,9 @@ int ooCallSetCalledPartyNumber(OOH323CallData *call, const char *number)
    call->calledPartyNumber = (char*) memAlloc(call->pctxt, strlen(number)+1);
    if(call->calledPartyNumber)
    {
-     strcpy(call->calledPartyNumber, number);
+     /* IVeS: remove non alphanum digits if any (may corrupt SIP messages) */
+     /* strcpy(call->calledPartyNumber, number); */
+     IVeS_strcpy(call->calledPartyNumber, number);
    }
    else{
       OOTRACEERR3("Error:Memory - ooCallSetCalledPartyNumber - "
@@ -409,7 +452,6 @@ int ooCallClearAliases(OOH323CallData *call)
    return OO_OK;
 }
 
-
 int ooCallAddAlias
    (OOH323CallData *call, int aliasType, const char *value, OOBOOL local)
 {
@@ -430,7 +472,9 @@ int ooCallAddAlias
       memFreePtr(call->pctxt, psNewAlias);
       return OO_FAILED;
    }
-   strcpy(psNewAlias->value, value);
+   /* IVeS: remove non alphanum digits if any (may corrupt SIP messages) */
+   /* strcpy(psNewAlias->value, value); */
+   IVeS_strcpy(psNewAlias->value, value);
 
    if(local)
    {
@@ -586,6 +630,23 @@ int ooCallAddH263VideoCapability
 
 }
 
+int ooCallAddH264VideoCapability
+   (OOH323CallData *call, int cap, unsigned profile, unsigned constraint,
+    unsigned level, unsigned maxBitRate,
+    int dir, cb_StartReceiveChannel startReceiveChannel,
+    cb_StartTransmitChannel startTransmitChannel,
+    cb_StopReceiveChannel stopReceiveChannel,
+    cb_StopTransmitChannel stopTransmitChannel)
+{
+   return ooCapabilityAddH264VideoCapability(call,
+                profile, constraint,
+                level, maxBitRate, dir,
+                startReceiveChannel, startTransmitChannel,
+                stopReceiveChannel, stopTransmitChannel,
+                FALSE);
+}
+
+
 int ooCallEnableDTMFRFC2833(OOH323CallData *call, int dynamicRTPPayloadType)
 {
    return ooCapabilityEnableDTMFRFC2833(call, dynamicRTPPayloadType);
@@ -679,12 +740,11 @@ ASN1BOOL ooIsSessionEstablished(OOH323CallData *call, int sessionID, char* dir)
 int ooAddMediaInfo(OOH323CallData *call, OOMediaInfo mediaInfo)
 {
    OOMediaInfo *newMediaInfo=NULL;
-
+  OOTRACEAST(OOTRCLVLDBGA,">> ooAddMediaInfo\n");
    if(!call)
    {
-      OOTRACEERR3("Error:Invalid 'call' param for ooAddMediaInfo.(%s, %s)\n",
-                   call->callType, call->callToken);
-      return OO_FAILED;
+     OOTRACEERR3("Error:Invalid 'call' param for ooAddMediaInfo. call=0x%X \n",call,call);
+     return OO_FAILED;
    }
    newMediaInfo = (OOMediaInfo*) memAlloc(call->pctxt, sizeof(OOMediaInfo));
    if(!newMediaInfo)
@@ -696,10 +756,11 @@ int ooAddMediaInfo(OOH323CallData *call, OOMediaInfo mediaInfo)
 
    memcpy (newMediaInfo, &mediaInfo, sizeof(OOMediaInfo));
 
-   OOTRACEDBGC4("Configured mediainfo for cap %s (%s, %s)\n", 
-                ooGetCapTypeText(mediaInfo.cap),
+   OOTRACEAST(OOTRCLVLDBGA,"ooAddMediaInfo Configured mediainfo for cap %s [%s:%d] (%s, %s)\n", 
+              ooGetCapTypeText(mediaInfo.cap),newMediaInfo->lMediaIP ,newMediaInfo->lMediaPort,
                 call->callType, call->callToken);
    if(!call->mediaInfo) {
+       
       newMediaInfo->next = NULL;
       call->mediaInfo = newMediaInfo;
    }

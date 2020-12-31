@@ -10321,13 +10321,19 @@ EXTERN int asn1PE_H225H323_UU_PDU (OOCTXT* pctxt, H225H323_UU_PDU* pvalue)
    /* encode h323_message_body */
 
    stat = asn1PE_H225H323_UU_PDU_h323_message_body (pctxt, &pvalue->h323_message_body);
-   if (stat != ASN_OK) return stat;
+   if (stat != ASN_OK) {
+      OOTRACEAST(OOTRCLVLDBGA,"[H225] Encode body failed \n");   
+      return stat;
+   }
 
    /* encode nonStandardData */
 
    if (pvalue->m.nonStandardDataPresent) {
       stat = asn1PE_H225NonStandardParameter (pctxt, &pvalue->nonStandardData);
-      if (stat != ASN_OK) return stat;
+      if (stat != ASN_OK) {
+        OOTRACEAST(OOTRCLVLDBGA,"[H225] Encode non standart parameters  failed \n");   
+        return stat;
+      }
    }
 
    if (extbit) {
@@ -10577,13 +10583,18 @@ EXTERN int asn1PE_H225H323_UserInformation (OOCTXT* pctxt, H225H323_UserInformat
    /* encode h323_uu_pdu */
 
    stat = asn1PE_H225H323_UU_PDU (pctxt, &pvalue->h323_uu_pdu);
-   if (stat != ASN_OK) return stat;
-
+   if (stat != ASN_OK) {
+      OOTRACEAST(OOTRCLVLDBGA,"[H225] Encode UU PDU failed \n");   
+      return stat;
+   }
    /* encode user_data */
 
    if (pvalue->m.user_dataPresent) {
       stat = asn1PE_H225H323_UserInformation_user_data (pctxt, &pvalue->user_data);
-      if (stat != ASN_OK) return stat;
+      if (stat != ASN_OK) {
+         OOTRACEAST(OOTRCLVLDBGA,"[H225] Encode User Information failed \n");   
+         return stat;
+      }
    }
 
    return (stat);

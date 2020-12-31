@@ -27,6 +27,8 @@
 #include "ooSocket.h"
 #include "ooCalls.h"
 
+
+
 #define OORECEIVER 1
 #define OOTRANSMITTER 2
 #define OODUPLEX 3
@@ -205,6 +207,16 @@ EXTERN int ooOnSendMsg
  * @return         True if connection is ok, false otherwise.
  */
 EXTERN OOBOOL ooChannelsIsConnectionOK(OOH323CallData *call, OOSOCKET sock);
+
+/**
+ * This function is called to print h225 message.
+ * It can be used to some followup action after message has been sent.
+ * @param call            Pointer to call for which message has been sent.
+ * @param msg             Q.931 messages
+ *
+ * @return                OO_OK, on success. OO_FAILED, on failure
+ */
+EXTERN void ooPrintH225Msg(struct OOH323CallData *call, struct Q931Message *msg,  int recev  );
 
 /** 
  * @} 

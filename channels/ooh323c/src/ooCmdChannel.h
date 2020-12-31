@@ -24,6 +24,7 @@
 
 #include "ootypes.h"
 #include "ooStackCmds.h"
+#include <pthread.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,7 +52,7 @@ extern "C" {
  *
  * @return          OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooCreateCmdConnection();
+EXTERN int ooCreateCmdConnection(void);
 
 /**
  * This function is used to close a command channel setup with the stack 
@@ -59,7 +60,7 @@ EXTERN int ooCreateCmdConnection();
  *
  * @return          OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooCloseCmdConnection();
+EXTERN int ooCloseCmdConnection(void);
 
 
 /**
@@ -76,9 +77,11 @@ EXTERN int ooWriteStackCommand(OOStackCommand *cmd);
  *
  * @return          OO_OK, on success; OO_FAILED, on failure
  */
-EXTERN int ooReadAndProcessStackCommand();
+EXTERN int ooReadAndProcessStackCommand(void);
 
 
+EXTERN int ooSyncLock(void);
+EXTERN int ooSyncUnLock(void);
 /** 
  * @} 
  */

@@ -1946,6 +1946,11 @@ int ooGkClientHandleAdmissionReject
       case T_H225AdmissionRejectReason_extElem1:
          call->callEndReason = OO_REASON_GK_CLEARED;
          break;
+     default :
+          OOTRACEERR4("Unknown message received with reason code %d for "
+                "(%s, %s)\n", pAdmissionReject->rejectReason.t, call->callType,
+                 call->callToken);
+       break ; 
    }
 
    return OO_OK;   

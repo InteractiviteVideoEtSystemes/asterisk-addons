@@ -59,6 +59,7 @@ static HMODULE ws32 = 0;
 
 
 
+
 int ooSocketsInit ()
 {
 #if defined(_WIN32_WCE)
@@ -198,7 +199,7 @@ int ooSocketCreate (OOSOCKET* psocket)
    if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, 
                    (const char* ) &on, sizeof (on)) == -1)
    {
-      OOTRACEERR1("Error:Failed to set socket option SO_REUSEADDR\n");
+      OOTRACEERR1("[H323/ooSocket] Error:Failed to set socket option SO_REUSEADDR\n");
       return ASN_E_INVSOCKET;
    }
    linger.l_onoff = 1;
@@ -206,7 +207,7 @@ int ooSocketCreate (OOSOCKET* psocket)
    if (setsockopt (sock, SOL_SOCKET, SO_LINGER, 
                    (const char* ) &linger, sizeof (linger)) == -1)
    {
-      OOTRACEERR1("Error:Failed to set socket option linger\n");
+      OOTRACEERR1("[H323/ooSocket] Error:Failed to set socket option linger\n");
       return ASN_E_INVSOCKET;
    }
    *psocket = sock;
@@ -223,7 +224,7 @@ int ooSocketCreateUDP (OOSOCKET* psocket)
                              0);
 
    if (sock == OOSOCKET_INVALID){
-      OOTRACEERR1("Error:Failed to create UDP socket\n");
+      OOTRACEERR1("[H323/ooSocket] Error:Failed to create UDP socket\n");
       return ASN_E_INVSOCKET;
    }
 
@@ -231,7 +232,7 @@ int ooSocketCreateUDP (OOSOCKET* psocket)
    if (setsockopt (sock, SOL_SOCKET, SO_REUSEADDR, 
                    (const char* ) &on, sizeof (on)) == -1)
    {
-      OOTRACEERR1("Error:Failed to set socket option SO_REUSEADDR\n");
+      OOTRACEERR1("[H323/ooSocket] Error:Failed to set socket option SO_REUSEADDR\n");
       return ASN_E_INVSOCKET;
    }
    linger.l_onoff = 1;
@@ -247,8 +248,12 @@ int ooSocketCreateUDP (OOSOCKET* psocket)
 int ooSocketClose (OOSOCKET socket)
 {
    shutdown (socket, SHUTDOWN_FLAGS);
-   if (closesocket (socket) == -1)
+   OOTRACEINFO2("[H323/ooSocket] ooSocketClose close socket[0x%x]\n", socket);
+   
+   if (closesocket (socket) == -1){
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] Error:ooSocketClose Failed to close socket [0x%x] errno:%d %s \n",socket,errno, strerror(errno));
       return ASN_E_INVSOCKET;
+   }
    return ASN_OK;
 }
 
@@ -258,7 +263,7 @@ int ooSocketBind (OOSOCKET socket, OOIPADDR addr, int port)
 
    if (socket == OOSOCKET_INVALID)
    { 
-      OOTRACEERR1("Error:Invalid socket passed to bind\n");
+      OOTRACEERR1("[H323/ooSocket] Error:Invalid socket passed to bind\n");
       return ASN_E_INVSOCKET;
    }
 
@@ -270,11 +275,10 @@ int ooSocketBind (OOSOCKET socket, OOIPADDR addr, int port)
    if (bind (socket, (struct sockaddr *) (void*) &m_addr,
                      sizeof (m_addr)) == -1)
    {
-      perror ("bind");
-      OOTRACEERR1("Error:Bind failed\n");
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketBind failed  socket[0x%x] %d , %s \n",socket,errno,strerror(errno));
       return ASN_E_INVSOCKET;
    }
-
+   OOTRACEINFO3("[H323/ooSocket] ooSocketBind socket[0x%x],port[%d]\n", socket,htons(m_addr.sin_port));
    return ASN_OK;
 }
 
@@ -286,7 +290,7 @@ int ooSocketGetSockName(OOSOCKET socket, struct sockaddr_in *name, int *size)
    if(ret == 0)
       return ASN_OK;
    else{
-      OOTRACEERR1("Error:ooSocketGetSockName - getsockname\n");
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket]ooSocketGetSockName - getsockname\n");
       return ASN_E_INVSOCKET;
    }
 }
@@ -308,8 +312,7 @@ int ooSocketGetIpAndPort(OOSOCKET socket, char *ip, int len, int *port)
    if(host && strlen(host) < (unsigned)len)
       strcpy(ip, host);   
    else{
-     OOTRACEERR1("Error:Insufficient buffer for ip address - "
-                 "ooSocketGetIpAndPort\n");
+      OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] Insufficient buffer for ip address - ooSocketGetIpAndPort\n");
       return -1;
    }
    
@@ -322,14 +325,16 @@ int ooSocketListen (OOSOCKET socket, int maxConnection)
 {
    if (socket == OOSOCKET_INVALID) return ASN_E_INVSOCKET;
 
-   if (listen (socket, maxConnection) == -1)
-      return ASN_E_INVSOCKET;
+   if (listen (socket, maxConnection) == -1){
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketListen failed maxConnection[%d] error:%d %s\n",maxConnection,errno,strerror(errno));
+     return ASN_E_INVSOCKET;
+   }
 
    return ASN_OK;
 }
 
 int ooSocketAccept (OOSOCKET socket, OOSOCKET *pNewSocket, 
-                    OOIPADDR* destAddr, int* destPort) 
+                    struct in_addr* destAddr, int* destPort) 
 {
    struct sockaddr_in m_addr;
    OOSOCKLEN addr_length = sizeof (m_addr);
@@ -338,39 +343,183 @@ int ooSocketAccept (OOSOCKET socket, OOSOCKET *pNewSocket,
    if (pNewSocket == 0) return ASN_E_INVPARAM;
 
    *pNewSocket = accept (socket, (struct sockaddr *) (void*) &m_addr, 
-                         &addr_length);
+                         (socklen_t *)&addr_length);
    if (*pNewSocket <= 0) return ASN_E_INVSOCKET;
 
    if (destAddr != 0) 
-      *destAddr = ntohl (m_addr.sin_addr.s_addr);
+#if 1 // Ives @ corrupt , using inet & ntoh fct .
+     memcpy ( destAddr ,  &m_addr.sin_addr , sizeof( struct in_addr ));
+#else
+   *destAddr = ntohl (m_addr.sin_addr.s_addr);
+#endif
    if (destPort != 0)
       *destPort = ntohs (m_addr.sin_port);
 
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/ooSocket] ooSocketAccept on socket [0x%x] newSocket[0x%x] Accept from %s port %d \n",socket,*pNewSocket,inet_ntoa( m_addr.sin_addr), ntohs (m_addr.sin_port) ); 
+
    return ASN_OK;
 }
 
-int ooSocketConnect (OOSOCKET socket, const char* host, int port) 
+int ooSocketConnect (OOSOCKET socket, const char* host, int port , int non_blocking) 
 {
-   struct sockaddr_in m_addr;
+  struct sockaddr_in m_addr;
+  int Status = ASN_OK ;
 
-   if (socket == OOSOCKET_INVALID)
-   { 
-      return ASN_E_INVSOCKET;
-   }
+  if (socket == OOSOCKET_INVALID)
+  { 
+    return ASN_E_INVSOCKET;
+  }
    
-   memset (&m_addr, 0, sizeof (m_addr));
+  memset (&m_addr, 0, sizeof (m_addr));
 
-   m_addr.sin_family = AF_INET;
-   m_addr.sin_port = htons ((unsigned short)port);
-   m_addr.sin_addr.s_addr = inet_addr (host);
+  m_addr.sin_family = AF_INET;
+  m_addr.sin_port = htons ((unsigned short)port);
+  m_addr.sin_addr.s_addr = inet_addr (host);
 
-   if (connect (socket, (struct sockaddr *) (void*) &m_addr, 
-                sizeof (struct sockaddr_in)) == -1)
-   {
-      return ASN_E_INVSOCKET;
-   }
-   return ASN_OK;
+  /* Connection succeed ! */
+  OOTRACEAST(OOTRCLVLDBGA,"[H323/ooSocket] ooSocketConnect socket[0x%x] connect %s:%d Mode[%s] port[%d]\n",
+             socket,host,port,(non_blocking)?"NoBlocking mode":"BlockingMode",ntohs (m_addr.sin_port));
+
+
+
+  if ( non_blocking == TRUE ) 
+  {  
+    int   socketflags;
+    /* Debute une connexion sur une socket. */
+    if ( (socketflags = fcntl( socket, F_GETFL, 0)) != -1)
+    {
+      socketflags |= O_NONBLOCK;
+      if ( fcntl( socket, F_SETFL, socketflags) != -1)
+      {
+        /* Debute une connexion sur une socket. */
+        if ( connect ( socket, 
+                      (struct sockaddr*)&m_addr, 
+                      sizeof (m_addr)) == 0)
+        {
+          /* Connection succeed ! */
+          OOTRACEAST(OOTRCLVLDBGA,"[H323/0x%X] ooSocketConnect non-blocking connect %s:%d Sucess\n",
+                     socket,host,port);
+        }
+        else
+        {
+          if ( (errno == EINPROGRESS) || (errno == EWOULDBLOCK) )
+          {
+            /* Connection in progress ! */
+            OOTRACEAST(OOTRCLVLDBGA,"[H323/0x%X] ooSocketConnect non-blocking connect %s:%d in progress\n",
+                       socket,host,port);
+            Status = ASN_SOCKET_INPROG;          
+          }
+          else
+          {
+            OOTRACEAST(OOTRCLVLERR,"[H323/0x%X] ooSocketConnect non-blocking connect %s:%d failed (%d:%s)\n",
+                       socket,host,port , errno , strerror(errno) ); 
+            Status = ASN_E_INVSOCKET ;          
+          }
+        }
+      }
+      else
+      {
+        OOTRACEAST(OOTRCLVLERR,"[H323/0x%X]: ooSocketConnect non-blocking connect %s:%d : fcntl F_SETFL failed (%d:%s)\n",
+                   socket,host,port , errno , strerror(errno));
+        Status = ASN_E_INVSOCKET;
+      }
+    }
+    else                                                
+    {
+        OOTRACEAST(OOTRCLVLERR,"[H323/0x%X]: ooSocketConnect non-blocking connect %s:%d fcntl : fcntl F_GETFL failed (%d:%s)\n",
+                   socket,host,port , errno , strerror(errno));
+        Status = ASN_E_INVSOCKET ;
+    }
+  }
+  else
+  {
+    if (connect (socket, (struct sockaddr *) (void*) &m_addr, 
+                 sizeof (struct sockaddr_in)) == -1)
+    {
+      OOTRACEAST(OOTRCLVLERR,"[H323/0x%X]: ooSocketConnect blocking connect %s:%d failed (%d:%s)\n",
+                 socket,host,port, errno , strerror(errno));
+      Status = ASN_E_INVSOCKET;
+    }
+    else
+    {
+      /* Connection succeed ! */
+      OOTRACEAST(OOTRCLVLDBGA,"[H323/0x%X]: ooSocketConnect blocking connect %s:%d Sucess\n",
+                 socket,host,port);      
+    }
+  }
+  if ( Status != ASN_OK ){
+    OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketConnect connect FAILED  status [%d] socket[0x%x], %s:%d Mode[%s] port[%d]\n",
+               Status,socket,host,port,(non_blocking)?"NoBlocking mode":"BlockingMode",ntohs (m_addr.sin_port));
+  }
+
+  return  Status ;
 }
+
+
+int ooSocketConnectCheckBlock (OOSOCKET socket ,const char* host, int port )
+{
+  int Status = ASN_OK ;
+  fd_set wrset; 
+  struct timeval tv= {1,0}; 
+  int valopt, res;
+  socklen_t   lon;
+
+  /* init ensemble de descripteur */
+  FD_ZERO(&wrset); 
+  /* ajoute un descripteur à l'ensemble */
+  FD_SET(socket , &wrset);
+  res = select(socket +1, NULL, &wrset, NULL, &tv);
+
+  if ( res > 0 ) 
+  {
+    /* Socket selected for write */
+    lon = sizeof(int); 
+
+    if (getsockopt(socket , SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) == 0) 
+    {
+      /* Check the value returned... */
+      if (!valopt) 
+      { 
+        /* Connection succeed ! */
+        OOTRACEAST(OOTRCLVLDBGA,"[H323/0x%X] ooSocketConnectCheckBlock non-blocking connect %s:%d Sucess\n",
+                   socket,host,port);
+      } 
+      else
+      {
+        OOTRACEAST(OOTRCLVLERR,"[H323/0x%X]:ooSocketConnectCheckBlock  %s:%d error in delayed connection() %d - %s\n",
+                   socket,host,port, valopt, strerror(valopt));
+        Status = ASN_E_INVSOCKET ;
+      }
+    }
+    else
+    { 
+      OOTRACEAST(OOTRCLVLERR,"[H323/0x%X]: ooSocketConnectCheckBlock %s:%d  error in getsockopt() %d - %s\n",
+                 socket,host,port, errno, strerror(errno));
+      Status = ASN_E_INVSOCKET ;
+    } 
+  }
+  else if ( (res < 0) && (errno != EINTR) )
+  {
+    OOTRACEAST(OOTRCLVLERR,"[H323/0x%X]: ooSocketConnectCheckBlock %s:%d  error connecting %d - %s\n",
+               socket,host,port, errno, strerror(errno));
+    Status = ASN_E_INVSOCKET ;
+  }
+  else
+  {
+    /* Connection in progress ! */
+    OOTRACEAST(OOTRCLVLDBGA,"[H323/0x%X] ooSocketConnectCheckBlock non-blocking connect %s:%d in progress\n",
+               socket,host,port);
+    Status = ASN_SOCKET_INPROG;
+  }
+  if ( Status != ASN_OK ){
+    OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketConnectCheckBlock ooSocketConnectCheckBlock FAILED  status [%d] socket[0x%x], %s:%d \n",
+               Status,socket,host,port);
+  }
+   
+  return Status;
+}
+
+
 /*
 // **Need to add check whether complete data was sent by checking the return
 // **value of send and if complete data is not sent then add mechanism to 
@@ -378,29 +527,38 @@ int ooSocketConnect (OOSOCKET socket, const char* host, int port)
 */
 int ooSocketSend (OOSOCKET socket, const ASN1OCTET* pdata, ASN1UINT size)
 {
-   if (socket == OOSOCKET_INVALID) return ASN_E_INVSOCKET;
-   
-   if (send (socket, (const char*) pdata, size, SEND_FLAGS) == -1)
-      return ASN_E_INVSOCKET;
-   return ASN_OK;
+  if (socket == OOSOCKET_INVALID) {
+    OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv socket[0x%x] invalid socket \n",  socket);
+    return ASN_E_INVSOCKET;
+  }
+  if (send (socket, (const char*) pdata, size, SEND_FLAGS) == -1){
+    OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv invalid socket send socket[0x%x] errno:%d ,%s \n",  socket, errno,strerror(errno));
+    return ASN_E_INVSOCKET;
+  }
+  return ASN_OK;
 }
 
 int ooSocketSendTo(OOSOCKET socket, const ASN1OCTET* pdata, ASN1UINT size,
-                     const char* host, int port)
+                   const char* host, int port)
 {
-   struct sockaddr_in m_addr;
-   if (socket == OOSOCKET_INVALID) return ASN_E_INVSOCKET;
+  struct sockaddr_in m_addr;
+  if (socket == OOSOCKET_INVALID) {
+    OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv socket[0x%x] invalid socket \n",  socket);
+    return ASN_E_INVSOCKET;
+  }
    
-   memset (&m_addr, 0, sizeof (m_addr));
+  memset (&m_addr, 0, sizeof (m_addr));
 
-   m_addr.sin_family = AF_INET;
-   m_addr.sin_port = htons ((unsigned short)port);
-   m_addr.sin_addr.s_addr = inet_addr (host);
-   if (sendto (socket, (const char*) pdata, size, SEND_FLAGS, 
-                                    (const struct sockaddr*)&m_addr, 
-                                    sizeof(m_addr)) == -1)
-      return ASN_E_INVSOCKET;
-   return ASN_OK;
+  m_addr.sin_family = AF_INET;
+  m_addr.sin_port = htons ((unsigned short)port);
+  m_addr.sin_addr.s_addr = inet_addr (host);
+  if (sendto (socket, (const char*) pdata, size, SEND_FLAGS, 
+              (const struct sockaddr*)&m_addr, 
+              sizeof(m_addr)) == -1){
+    OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv socket[0x%x]  invalid socket sendto errno:%d ,%s \n",  socket, errno,strerror(errno));
+    return ASN_E_INVSOCKET;
+  }
+  return ASN_OK;
 }
 
 int ooSocketRecvPeek(OOSOCKET socket, ASN1OCTET* pbuf, ASN1UINT bufsize)
@@ -408,20 +566,37 @@ int ooSocketRecvPeek(OOSOCKET socket, ASN1OCTET* pbuf, ASN1UINT bufsize)
    int len;
    int flags = MSG_PEEK;
 
-   if (socket == OOSOCKET_INVALID) return ASN_E_INVSOCKET;
-
-   if ((len = recv (socket, (char*) pbuf, bufsize, flags)) == -1)
-      return ASN_E_INVSOCKET;
+   if (socket == OOSOCKET_INVALID) {
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecvPeek socket[0x%x]  invalid socket \n",  socket);
+     return ASN_E_INVSOCKET;
+   }
+   len = recv (socket, (char*) pbuf, bufsize, flags);
+   if (len <= 0 ){
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecvPeek socket[0x%x]  invalid socket reception errno:%d ,%s \n",  socket, errno,strerror(errno));
+     if ( len == 0 ){
+        OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecvPeek socket[0x%x] peer disconnect \n",  socket, errno,strerror(errno));
+     }
+     return ASN_E_INVSOCKET;
+   }
    return len;
 }
 
 int ooSocketRecv (OOSOCKET socket, ASN1OCTET* pbuf, ASN1UINT bufsize)
 {
    int len;
-   if (socket == OOSOCKET_INVALID) return ASN_E_INVSOCKET;
+  if (socket == OOSOCKET_INVALID) {
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv socket[0x%x] invalid socket \n",  socket);
+     return ASN_E_INVSOCKET;
+   }
+  len = recv (socket, (char*) pbuf, bufsize, 0);
+   if (len <= 0 ){
+     OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv socket[0x%x] invalid socket reception errno:%d ,%s \n",  socket, errno,strerror(errno));
+     if ( len == 0 ){
+        OOTRACEAST(OOTRCLVLERR,"[H323/ooSocket] ooSocketRecv socket[0x%x] peer disconnect \n",  socket, errno,strerror(errno));
+     }
+     return ASN_E_INVSOCKET;
+   }
 
-   if ((len = recv (socket, (char*) pbuf, bufsize, 0)) == -1)
-      return ASN_E_INVSOCKET;
    return len;
 }
 
@@ -518,7 +693,7 @@ int ooSocketConvertIpToNwAddr(char *inetIp, char *netIp)
 #else
    if(!inet_aton(inetIp, &sin.sin_addr))
    {
-      OOTRACEERR1("Error:Failed to convert address\n");
+      OOTRACEERR4("Error:Failed to convert address %s ( errno[%d] %s)\n",inetIp?inetIp:"NULL", errno, strerror(errno));
       return -1;
    }
   

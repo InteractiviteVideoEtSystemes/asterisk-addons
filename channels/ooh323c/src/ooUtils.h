@@ -50,4 +50,14 @@ EXTERN OOBOOL ooUtilsIsStrEmpty (const char * str);
  */
 EXTERN OOBOOL ooIsDailedDigit(const char* str);
 
+/**
+ * Compare two objcect IDs
+ *  
+ * @param obj1   First object ID to compare
+ * @param obj2   Second object ID to compare
+ * @return       TRUE if string contains all digits; FALSE otherwise
+ *
+ */
+EXTERN OOBOOL ooOidCompare(const ASN1OBJID* obj1, ASN1OBJID *obj2);
+
 #endif

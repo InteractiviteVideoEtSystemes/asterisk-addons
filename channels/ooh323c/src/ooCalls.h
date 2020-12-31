@@ -54,7 +54,13 @@ extern "C" {
 #define OO_M_DISABLEGK          ASN1UINTCNT(0x01000000)
 #define OO_M_MANUALRINGBACK     ASN1UINTCNT(0x10000000)
 
+#ifndef OO_PCV_CID_SIZE
+#define OO_PCV_CID_SIZE         (STR_SIZE_GLOBAL_UNIQUE_ID*2) +1
+#endif
 
+#ifndef OO_PRODUCT_ID_SIZE
+#define OO_PRODUCT_ID_SIZE      255
+#endif
 /** 
  * Call states.
  */
@@ -92,6 +98,7 @@ typedef struct OOMediaInfo{
    int   lMediaPort;
    int   lMediaCntrlPort;
    char  lMediaIP[20];
+   int   rtpPayloadType;
    struct OOMediaInfo *next;
 } OOMediaInfo;
 
@@ -141,8 +148,18 @@ typedef struct OOH323CallData {
    OOCallMode           callMode;
    ASN1USINT            callReference;
    char                 ourCallerId[256];
+   ASN1USINT            manufacturerCode;
+   char                 productId[OO_PRODUCT_ID_SIZE];
+   char                 versionId[OO_PRODUCT_ID_SIZE];
+   char                 chargVectorID[OO_PCV_CID_SIZE];
+   char                 PublicIP[OO_PCV_CID_SIZE];
+   char                 PrivateIP[OO_PCV_CID_SIZE];
    H225CallIdentifier   callIdentifier;/* The call identifier for the active 
                                           call. */
+
+   int			callingPartyNumberType;
+   int			addVp200Info;
+   int			BearerCapabilityTransferMode;
    char                 *callingPartyNumber;
    char                 *calledPartyNumber; 
    H225ConferenceIdentifier confIdentifier;
@@ -155,12 +172,14 @@ typedef struct OOH323CallData {
    OOMediaInfo          *mediaInfo;
    OOCallFwdData        *pCallFwdData;
    char                 localIP[20];/* Local IP address */
+   char                 H245localIP[20];/* Local IP address */
    OOH323Channel*       pH225Channel;
    OOH323Channel*       pH245Channel;
    OOSOCKET             *h245listener;
    int                  *h245listenport;
    char                 remoteIP[20];/* Remote IP address */
    int                  remotePort;
+    int                  listenerCount;
    int                  remoteH245Port;
    char                 *remoteDisplayName;
    struct OOAliases     *remoteAliases;
@@ -172,11 +191,25 @@ typedef struct OOH323CallData {
    struct ooH323EpCapability* ourCaps;
    struct ooH323EpCapability* remoteCaps; /* TODO: once we start using jointCaps, get rid of remoteCaps*/
    struct ooH323EpCapability* jointCaps;
+   struct ooH323EpCapability* localAudioChoice ;
+   struct ooH323EpCapability* localVideoChoice ;
+   struct ooH323EpCapability* RemoteAudioChoice ;
+   struct ooH323EpCapability* RemoteVideoChoice ;
+   int                        haveVideoSendPort ;
+   int                        haveAudioSendPort ;
+   int                        CallHaveH263;
+   int                        CallHaveH264;
+   int                        CallHaveAlaw;
+   int                        CallHaveUlaw;
+   int                        CallHaveGsm;
+   int                        CallHaveG729;
+   int                        CallHaveG723;
    int                  jointDtmfMode;
    DList                remoteFastStartOLCs;
    ASN1UINT8            remoteTermCapSeqNo;
    ASN1UINT8            localTermCapSeqNo;
    OOCapPrefs           capPrefs;   
+    // int                  haveSendOLC;
    OOLogicalChannel*    logicalChans; 
    int                  noOfLogicalChannels;
    int                  logicalChanNoBase;
@@ -187,6 +220,7 @@ typedef struct OOH323CallData {
    ASN1UINT             msdRetries;
    FastStartResponse    *pFastStartRes; /* fast start response */
    void                 *usrData; /*!<User can set this to user specific data*/
+   time_t               lastFUR ;
    struct OOH323CallData* next;
    struct OOH323CallData* prev;
 } OOH323CallData;
@@ -278,20 +312,34 @@ typedef int (*cb_OnReceivedDTMF)
    (struct OOH323CallData *call, const char *dtmf);
 
 /**
+ * callaback called each time the remote party opens an logical channel
+ * and we accept it
+ */
+typedef int (*cb_OnLogicalChannelOpened)
+   (struct OOH323CallData *call, OOLogicalChannel *lc);
+
+/** IVeS 
+ * This callback function is used to perform miscellaneous command
+ */
+typedef int (*cb_OnReceivedMiscellaneous)
+   (struct OOH323CallData *call, OOH323MiscCmd type , void* data );
+
+/**
  * This structure holds all of the H.323 signaling callback function 
  * addresses.
  * @see ooH323EpSetH323Callbacks
  */
 typedef struct OOH323CALLBACKS {
-   cb_OnAlerting onNewCallCreated;
-   cb_OnAlerting onAlerting;
-   cb_OnIncomingCall onIncomingCall;
-   cb_OnOutgoingCall onOutgoingCall;
-   cb_OnCallEstablished onCallEstablished;
-   cb_OnCallForwarded onCallForwarded;
-   cb_OnCallCleared onCallCleared;
-   cb_OpenLogicalChannels openLogicalChannels;
-   cb_OnReceivedDTMF onReceivedDTMF;
+      cb_OnAlerting onNewCallCreated;
+      cb_OnAlerting onAlerting;
+      cb_OnIncomingCall onIncomingCall;
+      cb_OnOutgoingCall onOutgoingCall;
+      cb_OnCallEstablished onCallEstablished;
+      cb_OnCallForwarded onCallForwarded;
+      cb_OnCallCleared onCallCleared;
+      cb_OpenLogicalChannels openLogicalChannels;
+      cb_OnReceivedDTMF onReceivedDTMF;
+      cb_OnReceivedMiscellaneous onReceivedMiscellaneous;
 } OOH323CALLBACKS;
 
 /**
@@ -328,7 +376,7 @@ EXTERN int ooCallSetCallerId
  * @return              OO_OK, on success. OO_FAILED, on failure.
  */
 EXTERN int ooCallSetCallingPartyNumber
-(OOH323CallData *call, const char *number);
+(OOH323CallData *call, const char *number, int callingPartyNumberType, int addVp200);
 
 /**
  * This function is used to retrieve calling party number of a particular call.
@@ -361,6 +409,17 @@ EXTERN int ooCallGetCalledPartyNumber
  */
 EXTERN int ooCallSetCalledPartyNumber
 (OOH323CallData *call, const char *number);
+
+/**
+ * This function is used to set called party number for a particular call.
+ * @param call          Handle to the call.
+ * @param number        Called Party number value.
+ *
+ * @return              OO_OK, on success. OO_FAILED, on failure.
+ */
+EXTERN int ooCallSetBearerCapabilityCircuitMode
+(OOH323CallData *call, const int CircuitMode);
+
 
 /**
  * This function is used to clear the local aliases used by this call.
@@ -608,6 +667,14 @@ EXTERN int ooCallAddH263VideoCapability(OOH323CallData *call, int cap,
                                  cb_StartTransmitChannel startTransmitChannel,
                                  cb_StopReceiveChannel stopReceiveChannel,
                                  cb_StopTransmitChannel stopTransmitChannel);
+
+EXTERN int ooCallAddH264VideoCapability(OOH323CallData *call, int cap,
+    unsigned profile, unsigned constraint,
+    unsigned level, unsigned maxBitRate,
+    int dir, cb_StartReceiveChannel startReceiveChannel,
+    cb_StartTransmitChannel startTransmitChannel,
+    cb_StopReceiveChannel stopReceiveChannel,
+    cb_StopTransmitChannel stopTransmitChannel);
 
 
 /**

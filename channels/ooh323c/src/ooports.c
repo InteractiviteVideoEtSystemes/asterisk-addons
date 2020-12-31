@@ -25,52 +25,67 @@ extern OOH323EndPoint gH323ep;
 /* Get the next port of type TCP/UDP/RTP */
 int ooGetNextPort (OOH323PortType type)
 {
+  int port = 0 ;
    if(type==OOTCP)
    {
+     // Sig H.225 & Q931
       if(gH323ep.tcpPorts.current <= gH323ep.tcpPorts.max)
-         return gH323ep.tcpPorts.current++;
+         port= gH323ep.tcpPorts.current++;
       else
       {
          gH323ep.tcpPorts.current = gH323ep.tcpPorts.start;
-         return gH323ep.tcpPorts.current++;
+         port= gH323ep.tcpPorts.current++;
       }
    }
    if(type==OOUDP)
    {
+     // GK
       if(gH323ep.udpPorts.current <= gH323ep.udpPorts.max)
-         return gH323ep.udpPorts.current++;
+         port = gH323ep.udpPorts.current++;
       else
       {
          gH323ep.udpPorts.current = gH323ep.udpPorts.start;
-         return gH323ep.udpPorts.current++;
+         port = gH323ep.udpPorts.current++;
       }
    }
    if(type==OORTP)
    {
       if(gH323ep.rtpPorts.current <= gH323ep.rtpPorts.max)
-         return gH323ep.rtpPorts.current++;
+         port = gH323ep.rtpPorts.current++;
       else
       {
          gH323ep.rtpPorts.current = gH323ep.rtpPorts.start;
-         return gH323ep.rtpPorts.current++;
+         port = gH323ep.rtpPorts.current++;
       }
    }
-   return OO_FAILED;
+   if ( port )
+   {
+     OOTRACEAST(OOTRCLVLDBGA,"[H323] ooGetNextPort %s port %d \n",
+                (type==OOTCP)?"TCP(H245)":(type==OOUDP)?"UDP":"RTP",port); 
+     return port;
+   }
+   else
+   {
+     OOTRACEERR2("[H323] ooGetNextPort %s failed  \n",
+                (type==OOTCP)?"TCP(H245)":(type==OOUDP)?"UDP":"RTP");  
+     return OO_FAILED;
+   }
 }
 
-int ooBindPort (OOH323PortType type, OOSOCKET socket, char *ip)
+
+int ooBindPort (OOH323PortType type, OOSOCKET psocket, char *ip)
 {
    int initialPort, bindPort, ret;
    OOIPADDR ipAddrs;
 
    initialPort = ooGetNextPort (type);
    bindPort = initialPort;
-
+   OOTRACEAST(OOTRCLVLDBGA,"[H323/H245] Select port %d \n",bindPort);   
    ret= ooSocketStrToAddr (ip, &ipAddrs);
 
    while(1)
    {
-      if((ret=ooSocketBind(socket, ipAddrs, bindPort))==0)
+      if((ret=ooSocketBind(psocket, ipAddrs, bindPort))==0)
       {
          return bindPort;
       }
@@ -83,17 +98,17 @@ int ooBindPort (OOH323PortType type, OOSOCKET socket, char *ip)
 }
 
 #ifdef _WIN32        
-int ooBindOSAllocatedPort(OOSOCKET socket, char *ip)
+int ooBindOSAllocatedPort(OOSOCKET psocket, char *ip)
 {
    OOIPADDR ipAddrs;
    int size, ret;
    struct sockaddr_in name;
    size = sizeof(struct sockaddr_in);
    ret= ooSocketStrToAddr (ip, &ipAddrs);
-   if((ret=ooSocketBind(socket, ipAddrs, 
+   if((ret=ooSocketBind(psocket, ipAddrs, 
                      0))==ASN_OK)
    {
-      ret = ooSocketGetSockName(socket, &name, &size);
+      ret = ooSocketGetSockName(psocket, &name, &size);
       if(ret == ASN_OK)
       {
          return name.sin_port;
