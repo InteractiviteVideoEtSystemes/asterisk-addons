@@ -1,5 +1,5 @@
 Name:      asterisk-addons
-Version:   1.4.17
+Version:   1.4.18
 #Ne pas enlever le .ives a la fin de la release !
 #Cela est utilise par les scripts de recherche de package.
 Release:   1.ives%{dist}
@@ -18,6 +18,10 @@ Additional application for Asterisk PBX
 
 %clean
 echo "############################# Clean"
+cd $RPM_SOURCE_DIR/%name
+make clean
+cd ..
+rm -f %name
 echo Clean du repertoire $RPM_BUILD_ROOT
 [ "$RPM_BUILD_ROOT" != "/" ] && rm -rf "$RPM_BUILD_ROOT"
 
@@ -39,9 +43,17 @@ make DESTDIR=$RPM_BUILD_ROOT install samples
 
 %files
 %defattr(-,root,root,-)
-%config(noreplace) /etc/asterisk
-%{_libdir}
+%config(noreplace) /etc/asterisk/cdr_mysql.conf
+%config(noreplace) /etc/asterisk/mysql.conf
+%config(noreplace) /etc/asterisk/ooh323.conf
+%config(noreplace) /etc/asterisk/res_mysql.conf
 
+%{_libdir}/asterisk/modules/app_addon_sql_mysql.so
+%{_libdir}/asterisk/modules/app_saycountpl.so
+%{_libdir}/asterisk/modules/cdr_addon_mysql.so
+%{_libdir}/asterisk/modules/chan_ooh323.so
+%{_libdir}/asterisk/modules/format_mp3.so
+%{_libdir}/asterisk/modules/res_config_mysql.so
 
 %changelog
 * Thu Jul 21 2020 Emmanuel BUU <emmanuel.buu@ives.fr>
