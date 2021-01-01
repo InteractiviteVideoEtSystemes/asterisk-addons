@@ -6,6 +6,13 @@
 *.makeopts
 *.a
 *.oo
+*.rpm
 config.log
 config.status
 rpmbuild/
+build_tools/menuselect-deps
+makeopts
+makeopts.embed_rules
+menuselect-tree
+menuselect.makedeps
+menuselect/menuselect

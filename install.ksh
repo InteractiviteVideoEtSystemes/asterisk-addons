@@ -47,7 +47,9 @@ function create_rpm
     mkdir -p rpmbuild/RPMS/i586
 
     #Recuperation de la description du package 
-    ln -s $PWD rpmbuild/SOURCES/${PROJET}
+    cd rpmbuild/SOURCES
+    ln -s ../.. ${PROJET}
+    cd -
     cp ${PROJET}.spec rpmbuild/SPECS/${PROJET}.spec
     mkdir rpmbuild/SOURCES/configs/
     cp -p configs/ooh323.conf.sample rpmbuild/SOURCES/configs/
@@ -70,6 +72,8 @@ function clean
   	# On efface les liens ainsi que le package precedemment créé
   	echo Effacement des fichiers et liens gnupg rpmbuild ${PROJET}.rpm ${TEMPDIR}/${PROJET}
   	rm -rf rpmbuild/SPECS/${PROJET}.spec rpmbuild/gnupg
+	# Remove strange sym link
+	rm -f ${PROJET}
 }
 
 case $1 in
