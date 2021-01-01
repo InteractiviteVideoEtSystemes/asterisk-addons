@@ -22,32 +22,24 @@ echo Clean du repertoire $RPM_BUILD_ROOT
 [ "$RPM_BUILD_ROOT" != "/" ] && rm -rf "$RPM_BUILD_ROOT"
 
 %prep
-cd asterisk-addons-1.4.12
-rm -rf channels
-mv ../../SOURCES/channels .
-rm -rf res
-mv ../../SOURCES/res .
-cp ../../SOURCES/configs/ooh323.conf.sample configs
-cp ../../SOURCES/configure .
+cd $RPM_SOURCE_DIR/%name
+%configure --with-mysqlclient
 
 %build
 echo "############################# Build"
 echo $PWD
-#cd %name-1.4.7
-cd asterisk-addons-1.4.12
-%configure --with-mysqlclient
+cd $RPM_SOURCE_DIR/%name
 #make menuselect // use default 
 make
 
 %install
 echo "Install" $PWD
-mkdir -p $RPM_BUILD_ROOT
-cd asterisk-addons-1.4.12
+cd $RPM_SOURCE_DIR/%name
 make DESTDIR=$RPM_BUILD_ROOT install samples
 
 %files
 %defattr(-,root,root,-)
-%config(noreplace) /etc/
+%config(noreplace) /etc/asterisk
 %{_libdir}
 
 

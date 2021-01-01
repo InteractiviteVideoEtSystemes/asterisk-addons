@@ -58,8 +58,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <mysql/mysql.h>
-#include <mysql/mysql_version.h>
-#include <mysql/errmsg.h>
 
 AST_MUTEX_DEFINE_STATIC(mysql_lock);
 #define RES_CONFIG_MYSQL_CONF "res_mysql.conf"

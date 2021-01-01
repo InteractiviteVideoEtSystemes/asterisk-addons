@@ -6,3 +6,6 @@
 *.makeopts
 *.a
 *.oo
+config.log
+config.status
+rpmbuild/
