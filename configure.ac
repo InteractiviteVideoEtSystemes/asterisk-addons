@@ -163,7 +163,7 @@ AC_LANG(C)
 
 AST_EXT_LIB_SETUP([CURSES], [curses], [curses])
 AST_EXT_LIB_SETUP([NCURSES], [ncurses], [ncurses])
-AST_EXT_LIB_SETUP([MYSQLCLIENT], [mysqlclient], [mysqlclient])
+AST_EXT_LIB_SETUP([MYSQLCLIENT], [mariadbclient], [mariadbclient])
 AST_EXT_LIB_SETUP([ASTERISK], [asterisk], [asterisk])
 
 AST_EXT_LIB_CHECK([CURSES], [curses], [initscr], [curses.h])
@@ -190,15 +190,15 @@ fi
 if test x"${MYSQL_CONFIG}" != xNo; then
    MYSQLCLIENT_libs=`mysql_config --libs`
    
-   AC_CHECK_LIB([mysqlclient], [mysql_init], [], [], ${MYSQLCLIENT_libs})
+   AC_CHECK_LIB([mariadbclient], [mysql_init], [], [], ${MYSQLCLIENT_libs})
 
-   if test "${ac_cv_lib_mysqlclient_mysql_init}" = "yes"; then
+   if test "${ac_cv_lib_mariadbclient_mysql_init}" = "yes"; then
       MYSQLCLIENT_LIB="${MYSQLCLIENT_libs}"
       PBX_MYSQLCLIENT=1
    elif test ! -z "${MYSQLCLIENT_MANDATORY}";
    then
       AC_MSG_NOTICE(***)
-      AC_MSG_NOTICE(*** The MySQL client installation on this system appears to be broken.)
+      AC_MSG_NOTICE(*** The MariaDB client installation on this system appears to be broken.)
       AC_MSG_NOTICE(*** Either correct the installation, or run configure)
       AC_MSG_NOTICE(*** including --without-mysqlclient)
       exit 1

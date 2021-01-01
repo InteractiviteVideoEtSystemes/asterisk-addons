@@ -22,8 +22,6 @@ echo Clean du repertoire $RPM_BUILD_ROOT
 [ "$RPM_BUILD_ROOT" != "/" ] && rm -rf "$RPM_BUILD_ROOT"
 
 %prep
-rm -rf asterisk-addons-1.4.12
-svn export http://svn.digium.com/svn/asterisk-addons/tags/1.4.12 asterisk-addons-1.4.12
 cd asterisk-addons-1.4.12
 rm -rf channels
 mv ../../SOURCES/channels .

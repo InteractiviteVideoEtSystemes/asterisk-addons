@@ -38,16 +38,30 @@
 
 
 [general]
-;Define the asterisk server h323 endpoint
+;termtype=[50 - 240] value of termtype recommanded  Terminal=50 Gateway=90 Gatekeeper=130 MCU=190 default=240
+termtype=240
+
+; H225 && H245 tcp port range
+H245PortRange=15000,20000
+rtpportRange=10000,20000
+
+; vendor identification on setup
+H225_productid=ives-h323-gw
+H225_versionid=1.0.0
 
 ;The port asterisk should listen for incoming H323 connections.
 ;Default - 1720
-;port=1720
+port=1720
+
+; limit FUR
+FURMinTime=2 
 
 ;The IP address, asterisk should listen on for incoming H323
 ;connections
 ;Default - 0.0.0.0: tries to find out local ip address on it's own
-bindaddr=0.0.0.0    
+;bindaddr=   
+The public IP address for rtp stream and H245 
+;publicIp=
 
 ;Alias address for for asterisk server
 ;Default - "Asterisk PBX"
@@ -56,13 +70,13 @@ e164=100
 
 ;CallerID for the asterisk originated calls
 ;Default - Same as h323id
-callerid=asterisk
+callerid=ives-h323-gw
 
 
 ;This parameter indicates whether channel driver should register with 
 ;gatekeeper as a gateway or an endpoint.
 ;Default - no
-;gateway=no
+gateway=no
 
 ;Whether this asterisk server will use gatekeeper.
 ;Default - DISABLE
@@ -71,18 +85,23 @@ callerid=asterisk
 gatekeeper = DISABLE
 
 
+;incominglimit= max simultaneous incomming call
+;outgoinglimit= max simultaneous outgoing call
+
 ;Whether asterisk should use fast-start and tunneling for H323 connections.
 ;Default - yes
-;faststart=yes
-;h245tunneling=yes
-
+faststart=no
+h245tunneling=no
+H225_manufacturercode=9009
 ;Whether media wait for connect for fast start call
 ;Default - no
 ;mediawaitforconnect=no
 
+; for polycom 
+BearerCapabilityCircuitMode=yes
 ;Location for H323 log file
-;Default - /var/log/asterisk/h323_log
-;logfile=/var/log/asterisk/h323_log
+;Default - none
+;logfile=/var/log/asterisk/ooh323.conf
 
 
 ;Following values apply to all users/peers/friends defined below, unless
@@ -90,7 +109,7 @@ gatekeeper = DISABLE
 
 ;Sets default context all clients will be placed in.
 ;Default - default
-context=default
+context=h323-context
 
 ;Sets rtptimeout for all clients, unless overridden
 ;Default - 60 seconds
@@ -110,14 +129,13 @@ context=default
 ;Default - ulaw
 ; ONLY ulaw, gsm, g729 and g7231 supported as of now
 disallow=all     ;Note order of disallow/allow is important.
-allow=gsm
 allow=ulaw
-
+allow=h264
 
 ; dtmf mode to be used by default for all clients. Supports rfc2833, q931keypad
 ; h245alphanumeric, h245signal.
-;Default - rfc 2833
-dtmfmode=rfc2833
+;Default - all
+;dtmfmode=
 
 ; User/peer/friend definitions:
 ; User config options                    Peer config options
@@ -137,39 +155,4 @@ dtmfmode=rfc2833
 ;                                        e164
 ;                                        
 ;
-
-;Define users here
-;Section header is extension
-[myuser1]
-type=user
-context=context1
-disallow=all
-allow=gsm
-allow=ulaw    
-
-
-
-[mypeer1]
-type=peer
-context=context2
-ip=a.b.c.d   ; UPDATE with appropriate ip address
-port=1720    ; UPDATE with appropriate port
-e164=101
-
-
-
-[myfriend1]
-type=friend
-context=default
-ip=a.b.c.d		; UPDATE with appropriate ip address
-port=1720		; UPDATE with appropriate port
-disallow=all
-allow=ulaw
-e164=12345
-rtptimeout=60
-dtmfmode=rfc2833
-
-
-
-
 

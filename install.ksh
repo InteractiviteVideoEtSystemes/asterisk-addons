@@ -21,56 +21,47 @@ function create_rpm
     #Creation des macros rpmbuild
     rm -f ~/.rpmmacros
     touch ~/.rpmmacros
-    echo "%_topdir" $HOME"/rpmbuild" >> ~/.rpmmacros
+    echo "%_topdir" "${PWD}/rpmbuild" >> ~/.rpmmacros
     echo "%_tmppath %{_topdir}/TMP" >> ~/.rpmmacros
     echo "%_signature gpg" >> ~/.rpmmacros
     echo "%_gpg_name IVeSkey" >> ~/.rpmmacros
-    echo "%_gpg_path" $HOME"/rpmbuild/gnupg" >> ~/.rpmmacros
+    echo "%_gpg_path" "${PWD}/rpmbuild/gnupg" >> ~/.rpmmacros
     echo "%vendor IVeS" >> ~/.rpmmacros
     #Import de la clef gpg IVeS
-    mkdir -p $HOME/rpmbuild
-    cd $HOME/rpmbuild
+    mkdir -p rpmbuild/gnupg
     if [[ -z $1 || $1 -ne nosign ]]
-        then svn export http://svn.ives.fr/svn-libs-dev/gnupg
+    then
+	cd rpmbuild/gnupg
+	svn export http://svn.ives.fr/svn-libs-dev/gnupg
+	cd -
     fi
-    mkdir -p SOURCES
-    mkdir -p SPECS
-    mkdir -p BUILD
-    mkdir -p SRPMS
-    mkdir -p TMP
-    mkdir -p RPMS
-    mkdir -p RPMS/noarch
-    mkdir -p RPMS/x86_64
-    mkdir -p RPMS/i386
-    mkdir -p RPMS/i686
-    mkdir -p RPMS/i586
+    mkdir -p rpmbuild/SOURCES
+    mkdir -p rpmbuild/SPECS
+    mkdir -p rpmbuild/BUILD
+    mkdir -p rpmbuild/SRPMS
+    mkdir -p rpmbuild/TMP
+    mkdir -p rpmbuild/RPMS
+    mkdir -p rpmbuild/RPMS/noarch
+    mkdir -p rpmbuild/RPMS/i386
+    mkdir -p rpmbuild/RPMS/i686
+    mkdir -p rpmbuild/RPMS/i586
+
     #Recuperation de la description du package 
-    cd -
-    cp ${PROJET}.spec $HOME/rpmbuild/SPECS/${PROJET}.spec
-    rm -rf $HOME/rpmbuild/SOURCES/channels
-    rm -rf $HOME/rpmbuild/SOURCES/res
-    cp -rp channels $HOME/rpmbuild/SOURCES
-    cp -p configure $HOME/rpmbuild/SOURCES
-    cp -rp res $HOME/rpmbuild/SOURCES
-    mkdir $HOME/rpmbuild/SOURCES/configs/
-    cp -p configs/ooh323.conf.sample $HOME/rpmbuild/SOURCES/configs/
-    cd $HOME/rpmbuild/SOURCES
-    echo "Telechargement depuis DIGIUM"
-    rm -f asterisk-addons*
-    #wget http://downloads.digium.com/pub/asterisk/releases/asterisk-addons-1.4.12.tar.gz
-    #wget http://download.ives.fr/asterisk/asterisk-addons-1.4.7.tar.gz
+    ln -s $PWD rpmbuild/SOURCES/${PROJET}
+    cp ${PROJET}.spec rpmbuild/SPECS/${PROJET}.spec
+    mkdir rpmbuild/SOURCES/configs/
+    cp -p configs/ooh323.conf.sample rpmbuild/SOURCES/configs/
     
     #Cree le package
     if [[ -z $1 || $1 -ne nosign ]]
-        then rpmbuild -bb --define "asterisk_dep ${ASTERISK_DEP}" --sign $HOME/rpmbuild/SPECS/${PROJET}.spec
-        else rpmbuild -bb --define "asterisk_dep ${ASTERISK_DEP}"  $HOME/rpmbuild/SPECS/${PROJET}.spec
+        then rpmbuild -bb --define "asterisk_dep ${ASTERISK_DEP}" --sign rpmbuild/SPECS/${PROJET}.spec
+        else rpmbuild -bb --define "asterisk_dep ${ASTERISK_DEP}" rpmbuild/SPECS/${PROJET}.spec
     fi
  
     echo "************************* fin du rpmbuild ****************************"
     #Recuperation du rpm
-    cd -
-    mv -f $HOME/rpmbuild/RPMS/i386/*.rpm $PWD/.
-    mv -f $HOME/rpmbuild/RPMS/x86_64/*.rpm $PWD/.
+#    mv -f $HOME/rpmbuild/RPMS/i386/*.rpm $PWD/.
+    mv -f rpmbuild/RPMS/x86_64/*.rpm $PWD/.
     clean
 }
 
@@ -78,7 +69,7 @@ function clean
 {
   	# On efface les liens ainsi que le package precedemment créé
   	echo Effacement des fichiers et liens gnupg rpmbuild ${PROJET}.rpm ${TEMPDIR}/${PROJET}
-  	rm -rf $HOME/rpmbuild/SPECS/${PROJET}.spec $HOME/rpmbuild/gnupg $HOME/rpmbuild/BUILD/${PROJET}
+  	rm -rf rpmbuild/SPECS/${PROJET}.spec rpmbuild/gnupg
 }
 
 case $1 in
