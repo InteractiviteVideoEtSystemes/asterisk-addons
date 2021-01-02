@@ -56,11 +56,11 @@ make DESTDIR=$RPM_BUILD_ROOT install samples
 %{_libdir}/asterisk/modules/res_config_mysql.so
 
 %changelog
-* Thu Jul 21 2020 Emmanuel BUU <emmanuel.buu@ives.fr>
+* Tue Jul 21 2020 Emmanuel BUU <emmanuel.buu@ives.fr>
 - res_config_mysql now returns an error code to have a better idea of DB errors
 - version 1.4.17
 
-* Thu May 26 2020 Emmanuel BUU <emmanuel.buu@ives.fr>
+* Tue May 26 2020 Emmanuel BUU <emmanuel.buu@ives.fr>
 - wait 100ms for connection lock to avoid errors in load situation
 - migrated to mariaDB client libs
 - version 1.4.15
@@ -94,10 +94,10 @@ make DESTDIR=$RPM_BUILD_ROOT install samples
 - Version 1.4.12.22
 - Add support of FlowCommandControl.
 - Fix H624 profile and level negociation ( ITU H241 / H264  ) .
-* Thu May 22 2013 Philippe Verney  <philippe.verney@ives.fr>
+* Wed May 22 2013 Philippe Verney  <philippe.verney@ives.fr>
 - Version 1.4.12.21
 - Add  Conference request / enterH243TerminalID
-* Thu May 21 2013 Philippe Verney  <philippe.verney@ives.fr>
+* Tue May 21 2013 Philippe Verney  <philippe.verney@ives.fr>
 - Version 1.4.12.20
 - Add support of miscellaneousIndication logicalChannelActive
 * Thu May 02 2013 Philippe Verney  <philippe.verney@ives.fr>
@@ -145,17 +145,17 @@ make DESTDIR=$RPM_BUILD_ROOT install samples
 - Version 1.4.12.9
 - Fix crash outgoing call with Polycom 
 - add IpPublic on video OLC 
-* Fri Nov 12 2012 Philippe Verney  <philippe.verney@ives.fr>
+* Mon Nov 12 2012 Philippe Verney  <philippe.verney@ives.fr>
 - Version 1.4.12.8
 - Ajout trace socket ( open / send /recv / shutdown / close )
-* Fri Nov 12 2012 Philippe Verney  <philippe.verney@ives.fr>
+* Mon Nov 12 2012 Philippe Verney  <philippe.verney@ives.fr>
 - Version 1.4.12.7
 - Add trace on Failed to convert address
 * Fri Nov 09 2012 Philippe Verney  <philippe.verney@ives.fr>
 - Version 1.4.12.6
 - Add Nat rtp option : publicIp 
 - Add trace on open close socket ( ooSocketClose close socket / ooSocketBind socket ) 
-* Tue May 23 2012 Philippe Verney  <philippe.verney@ives.fr>
+* Wed May 23 2012 Philippe Verney  <philippe.verney@ives.fr>
 - Fix callForward
 * Tue Sep 27 2011 Philippe FAVIER <philippe.favier@ives.fr>
 - add option to optionally keep SSRC constant or not (config param in ooh323.cfg)
@@ -166,18 +166,18 @@ make DESTDIR=$RPM_BUILD_ROOT install samples
 - set username to callerid_num if user not found in user list
 * Wed May 18 2011 Emmanuel BUU <emmanuel.buu@ives.fr>
 - support for SSRC change added
-* Mon Jan 11 2011 Emmanuel BUU <emmanuel.buu@ives.fr>
+* Tue Jan 11 2011 Emmanuel BUU <emmanuel.buu@ives.fr>
 - dependency with asterskv 1.4.19r
-* Mon Jan 11 2011 Emmanuel BUU <emmanuel.buu@ives.fr>
+* Tue Jan 11 2011 Emmanuel BUU <emmanuel.buu@ives.fr>
 - migrated to addons 1.4.12
 - activated mechanism to reorder RTP packet on video connections for ooh323 channel
-* Wed Sep 24 2010 Philippe Verney <philippe.verney@ives.fr>
+* Fri Sep 24 2010 Philippe Verney <philippe.verney@ives.fr>
 - add ip on ast ctx
 * Tue Oct 27 2009 Emmanuel BUU <emmanuel.buu@ives.fr>
 - Added custom chan_ooh323 with video support
 - switched to asterisk-addons 1.4.9
 * Fri Apr 17 2009 Eric Delas <eric.delas@ives.fr> 1.4.7-2.ives
 - Package for 1.4.19f-1.ives asterisk version
-* Mon Apr 02 2009 Emmanuel BUU <emmanuel.buu@ives.fr> 0.1.1-1.ives
+* Thu Apr 02 2009 Emmanuel BUU <emmanuel.buu@ives.fr> 0.1.1-1.ives
 - package from local source tree. x86_64 package version
 
