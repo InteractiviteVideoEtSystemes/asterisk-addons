@@ -190,9 +190,9 @@ fi
 if test x"${MYSQL_CONFIG}" != xNo; then
    MYSQLCLIENT_libs=`mysql_config --libs`
    
-   AC_CHECK_LIB([mariadbclient], [mysql_init], [], [], ${MYSQLCLIENT_libs})
+   AC_CHECK_LIB([mariadb], [mysql_init], [], [], ${MYSQLCLIENT_libs})
 
-   if test "${ac_cv_lib_mariadbclient_mysql_init}" = "yes"; then
+   if test "${ac_cv_lib_mariadb_mysql_init}" = "yes"; then
       MYSQLCLIENT_LIB="${MYSQLCLIENT_libs}"
       PBX_MYSQLCLIENT=1
    elif test ! -z "${MYSQLCLIENT_MANDATORY}";
