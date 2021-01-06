@@ -16,3 +16,4 @@ makeopts.embed_rules
 menuselect-tree
 menuselect.makedeps
 menuselect/menuselect
+menuselect/mxml/config.h
