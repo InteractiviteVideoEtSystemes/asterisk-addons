@@ -14,8 +14,6 @@ function create_rpm
 	echo "Asterisk pas installe"
 	exit 20
     fi
-    ASTERISK_DEP=`rpm -q --qf "%{version}" asteriskv`
-    echo "Ces appli asterisk sont compiles pour la version " $ASTERISK_DEP
 
     #Cree l'environnement de creation de package
     #Creation des macros rpmbuild
@@ -56,8 +54,8 @@ function create_rpm
     
     #Cree le package
     if [[ -z $1 || $1 -ne nosign ]]
-        then rpmbuild -bb --define "asterisk_dep ${ASTERISK_DEP}" --sign rpmbuild/SPECS/${PROJET}.spec
-        else rpmbuild -bb --define "asterisk_dep ${ASTERISK_DEP}" rpmbuild/SPECS/${PROJET}.spec
+        then rpmbuild -bb --sign rpmbuild/SPECS/${PROJET}.spec
+        else rpmbuild -bb rpmbuild/SPECS/${PROJET}.spec
     fi
  
     echo "************************* fin du rpmbuild ****************************"
@@ -69,7 +67,7 @@ function create_rpm
 
 function clean
 {
-  	# On efface les liens ainsi que le package precedemment crÈÈ
+  	# On efface les liens ainsi que le package precedemment cr√√s
   	echo Effacement des fichiers et liens gnupg rpmbuild ${PROJET}.rpm ${TEMPDIR}/${PROJET}
   	rm -rf rpmbuild/SPECS/${PROJET}.spec rpmbuild/gnupg
 	# Remove strange sym link
@@ -83,9 +81,15 @@ case $1 in
   	"rpm")
   		echo "Creation du rpm"
   		create_rpm $2;;
+
+	"prereq")
+		sudo yum -y install MariaDB-devel asteriskv-devel ;;
+
   	*)
   		echo "usage: install.ksh [options]" 
   		echo "options :"
   		echo "  rpm		Generation d'un package rpm"
+		echo "  prereq		Installe les prerequis"
   		echo "  clean		Nettoie tous les fichiers cree par le present script, liens, tar.gz et rpm";;
+
 esac
